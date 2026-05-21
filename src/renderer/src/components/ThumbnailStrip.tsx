@@ -14,7 +14,10 @@ interface Props {
   onSelect: (i: number) => void
   onSelectionChange: (s: Set<number>) => void
   onReorder: (newOrder: number[]) => void
-  onContextAction: (action: 'rotate-cw' | 'rotate-ccw' | 'delete' | 'insertAfter', i: number) => void
+  onContextAction: (
+    action: 'rotate-cw' | 'rotate-ccw' | 'delete' | 'insertAfter',
+    indices: number[]
+  ) => void
 }
 
 export default function ThumbnailStrip({
@@ -123,43 +126,80 @@ export default function ThumbnailStrip({
         })}
       </div>
 
-      {menu && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setMenu(null)}
-            onContextMenu={(e) => {
-              e.preventDefault()
-              setMenu(null)
-            }}
-          />
-          <div
-            className="fixed z-50 bg-white shadow-xl rounded-md border border-black/10 py-1 text-sm min-w-[200px]"
-            style={{ left: menu.x, top: menu.y }}
-          >
-            {[
-              { id: 'rotate-cw' as const, label: 'Pivoter 90° (horaire)' },
-              { id: 'rotate-ccw' as const, label: 'Pivoter 90° (anti-horaire)' },
-              { id: 'insertAfter' as const, label: 'Insérer un PDF après cette page…' },
-              { id: 'delete' as const, label: 'Supprimer cette page' }
-            ].map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => {
-                  onContextAction(opt.id, menu.i)
+      {menu &&
+        (() => {
+          const isBulk = selected.has(menu.i) && selected.size > 1
+          const targetIndices = isBulk ? Array.from(selected).sort((a, b) => a - b) : [menu.i]
+          const n = targetIndices.length
+          const items: {
+            id: 'rotate-cw' | 'rotate-ccw' | 'insertAfter' | 'delete'
+            label: string
+            disabled?: boolean
+          }[] = [
+            {
+              id: 'rotate-cw',
+              label: isBulk ? `Pivoter ${n} pages 90° (horaire)` : 'Pivoter 90° (horaire)'
+            },
+            {
+              id: 'rotate-ccw',
+              label: isBulk
+                ? `Pivoter ${n} pages 90° (anti-horaire)`
+                : 'Pivoter 90° (anti-horaire)'
+            },
+            {
+              id: 'insertAfter',
+              label: 'Insérer un PDF après cette page…',
+              disabled: isBulk
+            },
+            {
+              id: 'delete',
+              label: isBulk ? `Supprimer ${n} pages sélectionnées` : 'Supprimer cette page'
+            }
+          ]
+          return (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setMenu(null)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
                   setMenu(null)
                 }}
-                className={[
-                  'block w-full text-left px-3 py-1.5 hover:bg-pretto hover:text-white',
-                  opt.id === 'delete' ? 'text-red-600' : ''
-                ].join(' ')}
+              />
+              <div
+                className="fixed z-50 bg-white shadow-xl rounded-md border border-black/10 py-1 text-sm min-w-[260px]"
+                style={{ left: menu.x, top: menu.y }}
               >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+                {isBulk && (
+                  <div className="px-3 py-1.5 text-[11px] text-pretto font-medium border-b border-black/5 bg-pretto/5">
+                    {n} pages sélectionnées
+                  </div>
+                )}
+                {items.map((opt) => (
+                  <button
+                    key={opt.id}
+                    disabled={opt.disabled}
+                    onClick={() => {
+                      if (opt.disabled) return
+                      onContextAction(opt.id, targetIndices)
+                      setMenu(null)
+                    }}
+                    className={[
+                      'block w-full text-left px-3 py-1.5',
+                      opt.disabled
+                        ? 'text-black/30 cursor-not-allowed'
+                        : opt.id === 'delete'
+                          ? 'text-red-600 hover:bg-red-500 hover:text-white'
+                          : 'hover:bg-pretto hover:text-white'
+                    ].join(' ')}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )
+        })()}
     </aside>
   )
 }

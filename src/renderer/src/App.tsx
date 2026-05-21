@@ -390,12 +390,13 @@ export default function App(): JSX.Element {
 
   function onContextAction(
     action: 'rotate-cw' | 'rotate-ccw' | 'delete' | 'insertAfter',
-    i: number
+    indices: number[]
   ): void {
-    if (action === 'rotate-cw') rotatePages(90, [i])
-    else if (action === 'rotate-ccw') rotatePages(270, [i])
-    else if (action === 'delete') deletePages([i])
-    else if (action === 'insertAfter') insertFromFile(i + 1)
+    if (indices.length === 0) return
+    if (action === 'rotate-cw') rotatePages(90, indices)
+    else if (action === 'rotate-ccw') rotatePages(270, indices)
+    else if (action === 'delete') deletePages(indices)
+    else if (action === 'insertAfter') insertFromFile(indices[0] + 1)
   }
 
   const onZoom = useCallback((delta: number | 'fit') => {
@@ -431,10 +432,16 @@ export default function App(): JSX.Element {
       } else if (meta && e.key === 'v' && !inInput && clipboardAnnotation) {
         e.preventDefault()
         pasteAtCurrent()
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && !inInput && selectedAnnotationId) {
-        e.preventDefault()
-        removeAnnotation(selectedAnnotationId)
-        setSelectedAnnotationId(null)
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && !inInput) {
+        if (selectedAnnotationId) {
+          e.preventDefault()
+          removeAnnotation(selectedAnnotationId)
+          setSelectedAnnotationId(null)
+        } else if (tool === 'pages' && selected.size > 0) {
+          e.preventDefault()
+          const indices = Array.from(selected).sort((a, b) => a - b)
+          deletePages(indices)
+        }
       } else if (e.key === 'Escape') {
         setSelectedAnnotationId(null)
         setOcrZoneActive(false)
@@ -459,7 +466,14 @@ export default function App(): JSX.Element {
     selectedAnnotationId,
     clipboardAnnotation,
     currentPage,
-    pasteAnnotation
+    pasteAnnotation,
+    pasteAtCurrent,
+    copyAnnotationById,
+    cutAnnotationById,
+    removeAnnotation,
+    tool,
+    selected,
+    deletePages
   ])
 
   return (
