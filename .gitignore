@@ -1,0 +1,22 @@
+node_modules
+out
+dist
+*.log
+.DS_Store
+.env
+.env.local
+.env.*.local
+.npmrc
+build/icon-staging
+# Cache npm local
+.npm-cache-*
+# build artifacts
+*.dmg
+*.exe
+*.AppImage
+# IDE
+.vscode
+.idea
+# Tesseract worker downloads cache (large)
+*.traineddata
+*.traineddata.gz
