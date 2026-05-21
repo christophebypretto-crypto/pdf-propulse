@@ -344,7 +344,15 @@ export default function App(): JSX.Element {
         .map((p, i) => ({ p, i }))
         .filter(({ i }) => !targets.includes(i))
         .map(({ p }) => ({ srcIndex: p.srcIndex, rotate: 0 as const }))
-      if (kept.length === 0) return
+      if (kept.length === 0) {
+        window.alert(
+          `Impossible de supprimer toutes les ${pages.length} pages.\n\n` +
+            `Un PDF doit contenir au moins une page. Désélectionne au moins une page ` +
+            `(⌘+clic dessus pour la retirer de la sélection) puis réessaie.\n\n` +
+            `Si tu veux fermer le document, utilise plutôt "Ouvrir" pour en charger un autre.`
+        )
+        return
+      }
       setBusy(true)
       try {
         const out = await window.api.pdfReorder(pdfBytes, kept)
