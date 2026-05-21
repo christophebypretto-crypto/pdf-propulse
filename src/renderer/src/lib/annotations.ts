@@ -8,6 +8,7 @@ export type Annotation =
   | PenAnnotation
   | TextAnnotation
   | ImageAnnotation
+  | EraserAnnotation
 
 export interface BaseAnnotation {
   id: string
@@ -44,6 +45,12 @@ export interface ImageAnnotation extends BaseAnnotation {
   w: number
   h: number
   dataUrl: string // PNG dataURL
+}
+
+export interface EraserAnnotation extends BaseAnnotation {
+  kind: 'eraser'
+  rect: { x: number; y: number; w: number; h: number } // normalise [0,1]
+  color?: string // hex, defaut blanc #FFFFFF
 }
 
 export function newId(): string {
@@ -129,6 +136,20 @@ export async function applyAnnotationsToPdf(
       })
       // Ignore rotation for now (rotation parameter unused)
       void rotation
+    } else if (a.kind === 'eraser') {
+      const c = hexToRgb(a.color || '#FFFFFF')
+      const x = a.rect.x * pw
+      const y = toPdfY(a.rect.y + a.rect.h, ph)
+      const w = a.rect.w * pw
+      const h = a.rect.h * ph
+      page.drawRectangle({
+        x,
+        y,
+        width: w,
+        height: h,
+        color: rgb(c.r, c.g, c.b),
+        opacity: 1
+      })
     } else if (a.kind === 'image') {
       let img = imageCache.get(a.dataUrl)
       if (!img) {

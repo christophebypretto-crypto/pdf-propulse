@@ -5,6 +5,7 @@ import {
   TextAnnotation,
   ImageAnnotation,
   HighlightAnnotation,
+  EraserAnnotation,
   newId
 } from '../lib/annotations'
 import { FormField, newFieldId } from '../lib/forms'
@@ -281,7 +282,8 @@ export default function PageCanvas({
     if (
       (tool === 'annotate-highlight' && highlightMode === 'shape') ||
       tool === 'form-text' ||
-      tool === 'form-checkbox'
+      tool === 'form-checkbox' ||
+      tool === 'eraser'
     ) {
       const { x, y } = toNorm(e)
       setDraftHL({ x, y, w: 0, h: 0 })
@@ -326,6 +328,14 @@ export default function PageCanvas({
     if (draftHL && draftHL.w > 0.005 && draftHL.h > 0.005) {
       if (ocrZoneActive) {
         onOcrZone(pageIndex, draftHL)
+      } else if (tool === 'eraser') {
+        onAddAnnotation({
+          id: newId(),
+          kind: 'eraser',
+          pageIndex,
+          rect: draftHL,
+          color: '#FFFFFF'
+        })
       } else if (tool === 'annotate-highlight') {
         onAddAnnotation({
           id: newId(),
@@ -391,6 +401,7 @@ export default function PageCanvas({
     tool === 'annotate-text' ||
     tool === 'form-text' ||
     tool === 'form-checkbox' ||
+    tool === 'eraser' ||
     (tool === 'sign' && signatureDataUrl !== null)
   const textLayerSelectable =
     !ocrZoneActive &&
@@ -457,6 +468,18 @@ export default function PageCanvas({
               opacity={highlightOpacity}
             />
           )}
+          {draftHL && tool === 'eraser' && !ocrZoneActive && (
+            <rect
+              x={draftHL.x * pageSize.w}
+              y={draftHL.y * pageSize.h}
+              width={draftHL.w * pageSize.w}
+              height={draftHL.h * pageSize.h}
+              fill="white"
+              stroke="#0C806E"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+            />
+          )}
           {draftHL &&
             (tool === 'form-text' || tool === 'form-checkbox' || ocrZoneActive) && (
               <rect
@@ -492,6 +515,22 @@ export default function PageCanvas({
           if (a.kind === 'highlight') {
             return (
               <DraggableHighlightAnnotation
+                key={a.id}
+                a={a}
+                pageW={pageSize.w}
+                pageH={pageSize.h}
+                isSelected={selectedAnnotationId === a.id}
+                onSelect={() => onSelectAnnotation(a.id)}
+                onUpdate={onUpdateAnnotation}
+                onRemove={onRemoveAnnotation}
+                onDuplicate={onDuplicateAnnotation}
+                onContextMenu={openAnnotationMenu}
+              />
+            )
+          }
+          if (a.kind === 'eraser') {
+            return (
+              <DraggableEraserAnnotation
                 key={a.id}
                 a={a}
                 pageW={pageSize.w}
@@ -1079,6 +1118,137 @@ function DraggableHighlightAnnotation({
         className="absolute inset-0 pointer-events-none rounded-sm"
         style={{ backgroundColor: a.color, opacity: a.opacity ?? 0.35 }}
       />
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onDuplicate(a.id)
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="absolute -top-2 -right-9 w-6 h-6 bg-pretto text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+        title="Dupliquer"
+      >
+        ⧉
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove(a.id)
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+        title="Supprimer"
+      >
+        ✕
+      </button>
+      <div
+        onMouseDown={startDrag('resize')}
+        className="absolute -bottom-1 -right-1 w-3 h-3 bg-pretto opacity-0 group-hover:opacity-100 rounded-sm cursor-nwse-resize"
+        title="Redimensionner"
+      />
+    </div>
+  )
+}
+
+interface DragEraserProps {
+  a: EraserAnnotation
+  pageW: number
+  pageH: number
+  isSelected: boolean
+  onSelect: () => void
+  onUpdate: (id: string, updates: Partial<Annotation>) => void
+  onRemove: (id: string) => void
+  onDuplicate: (id: string) => void
+  onContextMenu: (x: number, y: number, id: string) => void
+}
+
+function DraggableEraserAnnotation({
+  a,
+  pageW,
+  pageH,
+  isSelected,
+  onSelect,
+  onUpdate,
+  onRemove,
+  onDuplicate,
+  onContextMenu
+}: DragEraserProps): JSX.Element {
+  const dragging = useRef<{
+    mode: 'move' | 'resize'
+    startX: number
+    startY: number
+    base: { x: number; y: number; w: number; h: number }
+  } | null>(null)
+
+  function startDrag(mode: 'move' | 'resize') {
+    return (e: React.MouseEvent) => {
+      e.stopPropagation()
+      e.preventDefault()
+      onSelect()
+      dragging.current = {
+        mode,
+        startX: e.clientX,
+        startY: e.clientY,
+        base: { ...a.rect }
+      }
+      const onMove = (ev: MouseEvent) => {
+        if (!dragging.current) return
+        const dx = (ev.clientX - dragging.current.startX) / pageW
+        const dy = (ev.clientY - dragging.current.startY) / pageH
+        const base = dragging.current.base
+        if (dragging.current.mode === 'move') {
+          onUpdate(a.id, {
+            rect: {
+              x: Math.max(0, Math.min(1 - base.w, base.x + dx)),
+              y: Math.max(0, Math.min(1 - base.h, base.y + dy)),
+              w: base.w,
+              h: base.h
+            }
+          } as Partial<Annotation>)
+        } else {
+          onUpdate(a.id, {
+            rect: {
+              x: base.x,
+              y: base.y,
+              w: Math.max(0.005, Math.min(1 - base.x, base.w + dx)),
+              h: Math.max(0.005, Math.min(1 - base.y, base.h + dy))
+            }
+          } as Partial<Annotation>)
+        }
+      }
+      const onUp = () => {
+        dragging.current = null
+        document.removeEventListener('mousemove', onMove)
+        document.removeEventListener('mouseup', onUp)
+      }
+      document.addEventListener('mousemove', onMove)
+      document.addEventListener('mouseup', onUp)
+    }
+  }
+
+  return (
+    <div
+      className="absolute group"
+      style={{
+        left: a.rect.x * pageW,
+        top: a.rect.y * pageH,
+        width: a.rect.w * pageW,
+        height: a.rect.h * pageH,
+        backgroundColor: a.color || '#FFFFFF',
+        zIndex: isSelected ? 12 : 9,
+        cursor: 'move',
+        border: isSelected
+          ? '2px solid #0C806E'
+          : '1px dashed rgba(12,128,110,0.6)',
+        borderRadius: 1
+      }}
+      onMouseDown={startDrag('move')}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        onSelect()
+        onContextMenu(e.clientX, e.clientY, a.id)
+      }}
+      title="Zone effacée · Glisse pour déplacer · Coin pour redimensionner · Clic-droit pour menu"
+    >
       <button
         onClick={(e) => {
           e.stopPropagation()

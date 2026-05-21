@@ -33,6 +33,7 @@ interface Props {
   onSetTextColor: (c: string) => void
   onCreateSignature: () => void
   onClearSignature: () => void
+  onOpenRemoveTextDialog: () => void
   onUndo: () => void
   hasAnnotations: boolean
   formFieldsCount: number
@@ -269,6 +270,20 @@ export default function Toolbar(p: Props): JSX.Element {
                 </span>
               )}
             </div>
+          )}
+          {p.tool === 'eraser' && (
+            <>
+              <span className="text-black/60">
+                Glisse pour dessiner un rectangle blanc qui recouvre du contenu (redaction manuelle)
+              </span>
+              <div className="w-px h-5 bg-black/10 mx-1" />
+              <button onClick={p.onOpenRemoveTextDialog} className={primary}>
+                Supprimer un texte récurrent…
+              </button>
+              <span className="text-xs text-black/50">
+                (Watermark BROUILLON, DRAFT, COPY…)
+              </span>
+            </>
           )}
           {p.tool === 'sign' && (
             <>

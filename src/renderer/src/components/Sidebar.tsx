@@ -4,7 +4,7 @@ export type Tool =
   | 'annotate-pen'
   | 'annotate-text'
   | 'sign'
-  | 'edit'
+  | 'eraser'
   | 'ocr'
   | 'form-text'
   | 'form-checkbox'
@@ -23,10 +23,15 @@ const TOOLS: ToolDef[] = [
   { id: 'annotate-pen', label: 'Crayon', icon: '✎', hint: 'Dessiner à main levée' },
   { id: 'annotate-text', label: 'Texte', icon: 'T', hint: 'Clique pour ajouter du texte' },
   { id: 'sign', label: 'Signature', icon: '✍', hint: 'Dessiner ou importer une signature' },
+  {
+    id: 'eraser',
+    label: 'Effacer',
+    icon: '⌫',
+    hint: 'Recouvrir une zone (rectangle blanc) ou supprimer un texte récurrent (watermark)'
+  },
   { id: 'ocr', label: 'OCR', icon: '⚙', hint: 'Reconnaître le texte (Tesseract local)' },
   { id: 'form-text', label: 'Champ texte', icon: '◳', hint: 'Drag pour créer un champ à remplir' },
-  { id: 'form-checkbox', label: 'Case', icon: '☐', hint: 'Drag pour créer une case à cocher' },
-  { id: 'edit', label: 'Éditer', icon: 'E', hint: 'Bientôt — édition de texte natif PDF', disabled: true }
+  { id: 'form-checkbox', label: 'Case', icon: '☐', hint: 'Drag pour créer une case à cocher' }
 ]
 
 interface Props {

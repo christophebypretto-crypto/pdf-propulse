@@ -10,6 +10,7 @@ import MergeDialog from './components/dialogs/MergeDialog'
 import SplitDialog from './components/dialogs/SplitDialog'
 import ExtractDialog from './components/dialogs/ExtractDialog'
 import SignatureDialog from './components/dialogs/SignatureDialog'
+import RemoveTextDialog from './components/dialogs/RemoveTextDialog'
 import { renderPagesToThumbnails } from './lib/pdfRender'
 import { Annotation, applyAnnotationsToPdf } from './lib/annotations'
 import { FormField, applyFormFieldsToPdf } from './lib/forms'
@@ -28,7 +29,7 @@ export default function App(): JSX.Element {
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [dialog, setDialog] = useState<
-    null | 'merge' | 'split' | 'extract' | 'signature'
+    null | 'merge' | 'split' | 'extract' | 'signature' | 'removeText'
   >(null)
 
   // Options des outils
@@ -207,6 +208,18 @@ export default function App(): JSX.Element {
           x: Math.min(1 - clip.w, Math.max(0, clip.x + dx)),
           y: Math.min(1 - clip.h, Math.max(0, clip.y + dy))
         }
+      } else if (clip.kind === 'eraser') {
+        copy = {
+          ...clip,
+          id: fresh,
+          pageIndex: atPage,
+          rect: {
+            x: Math.min(1 - clip.rect.w, Math.max(0, clip.rect.x + dx)),
+            y: Math.min(1 - clip.rect.h, Math.max(0, clip.rect.y + dy)),
+            w: clip.rect.w,
+            h: clip.rect.h
+          }
+        }
       } else {
         copy = {
           ...clip,
@@ -257,6 +270,17 @@ export default function App(): JSX.Element {
           id: 'a_' + Math.random().toString(36).slice(2, 9),
           x: Math.min(1 - orig.w, orig.x + dx),
           y: Math.min(1 - orig.h, orig.y + dy)
+        }
+      } else if (orig.kind === 'eraser') {
+        copy = {
+          ...orig,
+          id: 'a_' + Math.random().toString(36).slice(2, 9),
+          rect: {
+            x: Math.min(1 - orig.rect.w, orig.rect.x + dx),
+            y: Math.min(1 - orig.rect.h, orig.rect.y + dy),
+            w: orig.rect.w,
+            h: orig.rect.h
+          }
         }
       } else {
         copy = {
@@ -519,6 +543,7 @@ export default function App(): JSX.Element {
         onSetTextColor={setTextColor}
         onCreateSignature={() => setDialog('signature')}
         onClearSignature={() => setSignatureDataUrl(null)}
+        onOpenRemoveTextDialog={() => setDialog('removeText')}
         onUndo={undoAnnotation}
         hasAnnotations={annotations.length > 0 || formFields.length > 0}
         formFieldsCount={formFields.length}
@@ -649,6 +674,20 @@ export default function App(): JSX.Element {
           onDone={(d) => {
             setSignatureDataUrl(d)
             setDialog(null)
+          }}
+        />
+      )}
+      {dialog === 'removeText' && pdfBytes && (
+        <RemoveTextDialog
+          pdfBytes={pdfBytes}
+          onClose={() => setDialog(null)}
+          onDone={async (newBytes, removedCount) => {
+            setDialog(null)
+            await loadFromBytes(newBytes)
+            window.alert(
+              `${removedCount} occurrence${removedCount > 1 ? 's' : ''} effacée${removedCount > 1 ? 's' : ''}.\n\n` +
+                `Pense à enregistrer (⌘S) pour graver la modification dans le PDF.`
+            )
           }}
         />
       )}
