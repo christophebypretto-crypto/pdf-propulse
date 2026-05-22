@@ -7,6 +7,7 @@ export interface Api {
   readPdf: (filePath: string) => Promise<ArrayBuffer>
   writePdf: (filePath: string, data: ArrayBuffer) => Promise<boolean>
   imageToPdfBytes: (imagePath: string) => Promise<ArrayBuffer>
+  onFileOpenRequest: (callback: (path: string) => void) => () => void
   pdfMerge: (files: ArrayBuffer[]) => Promise<ArrayBuffer>
   pdfSplit: (
     data: ArrayBuffer,

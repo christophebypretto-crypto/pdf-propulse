@@ -37,6 +37,9 @@ interface Props {
   onUndo: () => void
   hasAnnotations: boolean
   formFieldsCount: number
+  onOpenMirror: () => void
+  onCloseMirror: () => void
+  mirrorActive: boolean
 }
 
 function shortName(path: string | null): string {
@@ -79,6 +82,24 @@ export default function Toolbar(p: Props): JSX.Element {
         </button>
         <button onClick={p.onExtract} className={can(p.hasDoc)} disabled={!p.hasDoc || p.busy}>
           Extraire
+        </button>
+
+        <div className="w-px h-6 bg-black/10 mx-1" />
+
+        <button
+          onClick={p.mirrorActive ? p.onCloseMirror : p.onOpenMirror}
+          disabled={!p.hasDoc || p.busy}
+          className={[
+            cls,
+            !p.hasDoc
+              ? 'text-black/30 cursor-not-allowed'
+              : p.mirrorActive
+                ? 'bg-olive text-white hover:bg-olive/90'
+                : 'text-ink hover:bg-black/5'
+          ].join(' ')}
+          title="Ouvrir un 2e PDF à côté pour comparer (utile pour relevés bancaires)"
+        >
+          ⇄ {p.mirrorActive ? 'Fermer la comparaison' : 'Comptes miroir'}
         </button>
 
         <div className="w-px h-6 bg-black/10 mx-1" />

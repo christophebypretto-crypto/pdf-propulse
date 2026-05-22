@@ -8,6 +8,14 @@ files:
   - out/**/*
   - package.json
 asar: true
+fileAssociations:
+  - ext: pdf
+    name: PDF Document
+    description: Document PDF — éditable avec PDF 100K
+    role: Editor
+    rank: Alternate
+    icon: build/icon.icns
+    mimeType: application/pdf
 publish:
   - provider: github
     owner: christophebypretto-crypto

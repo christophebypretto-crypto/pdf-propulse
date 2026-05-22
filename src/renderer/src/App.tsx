@@ -6,6 +6,7 @@ import ThumbnailGrid from './components/ThumbnailGrid'
 import PageViewer from './components/PageViewer'
 import EmptyState from './components/EmptyState'
 import OCRPanel from './components/OCRPanel'
+import MirrorViewer from './components/MirrorViewer'
 import MergeDialog from './components/dialogs/MergeDialog'
 import SplitDialog from './components/dialogs/SplitDialog'
 import ExtractDialog from './components/dialogs/ExtractDialog'
@@ -41,6 +42,9 @@ export default function App(): JSX.Element {
   const [clipboardAnnotation, setClipboardAnnotation] = useState<Annotation | null>(null)
   const [ocrZoneActive, setOcrZoneActive] = useState(false)
   const [ocrZoneResult, setOcrZoneResult] = useState<string | null>(null)
+  // Comptes miroir : un 2e PDF affiche en parallele a droite pour comparer
+  const [mirrorPdfBytes, setMirrorPdfBytes] = useState<ArrayBuffer | null>(null)
+  const [mirrorFileName, setMirrorFileName] = useState<string | null>(null)
   const [penColor, setPenColor] = useState('#1A1A1A')
   const [penWidth, setPenWidth] = useState(3)
   const [textSize, setTextSize] = useState(14)
@@ -90,6 +94,30 @@ export default function App(): JSX.Element {
     if (!paths || paths.length === 0) return
     await loadFromPath(paths[0])
   }, [loadFromPath])
+
+  // Écoute les fichiers passés par "Ouvrir avec" (Mac open-file event / Windows argv)
+  useEffect(() => {
+    const cleanup = window.api.onFileOpenRequest((path) => {
+      loadFromPath(path).catch(() => {
+        /* silencieux : si le fichier n'est pas un PDF valide */
+      })
+    })
+    return cleanup
+  }, [loadFromPath])
+
+  // Comptes miroir : ouvre un 2e PDF affiche en parallele
+  const openMirror = useCallback(async () => {
+    const paths = await window.api.openPdf(false)
+    if (!paths || paths.length === 0) return
+    const buf = await window.api.readPdf(paths[0])
+    setMirrorPdfBytes(buf)
+    setMirrorFileName(paths[0].split('/').pop() || 'compte 2')
+  }, [])
+
+  const closeMirror = useCallback(() => {
+    setMirrorPdfBytes(null)
+    setMirrorFileName(null)
+  }, [])
 
   const buildFinalPdf = useCallback(async (): Promise<ArrayBuffer | null> => {
     if (!pdfBytes) return null
@@ -680,6 +708,9 @@ export default function App(): JSX.Element {
         onUndo={undoAnnotation}
         hasAnnotations={annotations.length > 0 || formFields.length > 0}
         formFieldsCount={formFields.length}
+        onOpenMirror={openMirror}
+        onCloseMirror={closeMirror}
+        mirrorActive={mirrorPdfBytes !== null}
       />
       <div className="flex flex-1 min-h-0">
         <Sidebar active={tool} onChange={setTool} hasDoc={!!pdfBytes} />
@@ -753,6 +784,15 @@ export default function App(): JSX.Element {
                   }}
                 />
               </main>
+              {mirrorPdfBytes && (
+                <div className="w-1/2 min-w-0">
+                  <MirrorViewer
+                    pdfBytes={mirrorPdfBytes}
+                    fileName={mirrorFileName}
+                    onClose={closeMirror}
+                  />
+                </div>
+              )}
               {tool === 'ocr' && (
                 <OCRPanel
                   pdfBytes={pdfBytes}

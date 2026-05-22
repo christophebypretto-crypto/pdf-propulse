@@ -1,9 +1,38 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, Menu } from 'electron'
 import { join } from 'path'
 import { readFile, writeFile } from 'fs/promises'
+import { existsSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { registerPdfHandlers } from './pdf/handlers'
+
+// Path PDF reçu via "Ouvrir avec" / argv en attente que la fenetre soit prete
+let pendingFilePath: string | null = null
+let mainWindow: BrowserWindow | null = null
+
+function findPdfInArgv(): string | null {
+  // Windows : "Ouvrir avec" passe le chemin du fichier comme argv[1] (ou plus)
+  const argv = process.argv
+  for (let i = 1; i < argv.length; i++) {
+    const arg = argv[i]
+    if (!arg) continue
+    if (arg.startsWith('-')) continue
+    if (arg.toLowerCase().endsWith('.pdf') && existsSync(arg)) {
+      return arg
+    }
+  }
+  return null
+}
+
+function sendOpenFile(path: string): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app:openFile', path)
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  } else {
+    pendingFilePath = path
+  }
+}
 
 function setupAutoUpdater(win: BrowserWindow): void {
   // Pas de check en dev
@@ -159,7 +188,51 @@ function createWindow(): BrowserWindow {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
+  // Une fois la fenetre prete, livre le fichier en attente (Ouvrir avec…)
+  win.webContents.once('did-finish-load', () => {
+    const path = pendingFilePath || findPdfInArgv()
+    pendingFilePath = null
+    if (path) {
+      // Petit delai pour que React soit prêt à recevoir l'event
+      setTimeout(() => win.webContents.send('app:openFile', path), 300)
+    }
+  })
+
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+  })
+
+  mainWindow = win
   return win
+}
+
+// Mac : "open-file" est l'event natif quand un fichier est passé via Finder
+app.on('open-file', (event, path) => {
+  event.preventDefault()
+  sendOpenFile(path)
+})
+
+// Single-instance lock : si une 2e instance est lancée avec un PDF, on l'envoie
+// à l'instance existante (évite d'ouvrir 2 fenetres pour le meme app)
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    // Cherche un .pdf dans les args de la 2e instance
+    for (let i = 1; i < argv.length; i++) {
+      const arg = argv[i]
+      if (arg && arg.toLowerCase().endsWith('.pdf') && existsSync(arg)) {
+        sendOpenFile(arg)
+        break
+      }
+    }
+    // Bring window to front
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
 }
 
 app.whenReady().then(() => {

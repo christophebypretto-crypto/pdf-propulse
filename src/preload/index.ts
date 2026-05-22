@@ -15,6 +15,14 @@ const api = {
   imageToPdfBytes: (imagePath: string): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('pdf:imageToPdfBytes', imagePath),
 
+  onFileOpenRequest: (callback: (path: string) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, path: string): void => callback(path)
+    ipcRenderer.on('app:openFile', listener)
+    return () => {
+      ipcRenderer.removeListener('app:openFile', listener)
+    }
+  },
+
   pdfMerge: (files: ArrayBuffer[]): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('pdf:merge', files),
   pdfSplit: (data: ArrayBuffer, ranges: { from: number; to: number }[]): Promise<ArrayBuffer[]> =>
