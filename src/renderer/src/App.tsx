@@ -624,6 +624,7 @@ export default function App(): JSX.Element {
                   numPages={pages.length}
                   currentPage={currentPage}
                   setCurrentPage={setCurrentPage}
+                  setZoom={onZoom}
                   scale={scale}
                   tool={tool}
                   annotations={annotations}

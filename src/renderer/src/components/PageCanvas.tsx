@@ -690,10 +690,11 @@ export default function PageCanvas({
               e.stopPropagation()
               if (e.key === 'Escape') {
                 setPendingText(null)
-              } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              } else if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 commitText()
               }
+              // Shift+Enter = nouvelle ligne
             }}
             placeholder="Tape ton texte…"
             className="border-2 border-pretto rounded px-2 py-0.5 outline-none bg-white shadow-lg resize-none whitespace-nowrap"
@@ -707,7 +708,7 @@ export default function PageCanvas({
             }}
           />
           <div className="text-[10px] text-black bg-pretto/90 text-white mt-1 px-1.5 py-0.5 rounded inline-block">
-            ⌘+Entrée pour valider · Echap pour annuler
+            Entrée valider · Maj+Entrée nouvelle ligne · Echap annuler
           </div>
         </div>
       )}
@@ -746,13 +747,14 @@ export default function PageCanvas({
               e.stopPropagation()
               if (e.key === 'Escape') {
                 setModifyEditor(null)
-              } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              } else if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 if (modifyEditor.draft !== modifyEditor.hit.text) {
                   onCommitModifyText(pageIndex, modifyEditor.hit, modifyEditor.draft)
                 }
                 setModifyEditor(null)
               }
+              // Shift+Enter = nouvelle ligne (comportement default)
             }}
             className="border-2 border-pretto rounded-sm outline-none bg-white shadow-lg resize-none whitespace-nowrap"
             style={{
@@ -769,7 +771,8 @@ export default function PageCanvas({
             }}
           />
           <div className="text-[10px] text-white bg-pretto/90 mt-1 px-1.5 py-0.5 rounded inline-block">
-            ⌘+Entrée valider · Echap annuler · Police {modifyEditor.hit.fontFamily}
+            Entrée valider · Maj+Entrée nouvelle ligne · Echap annuler · Police{' '}
+            {modifyEditor.hit.fontFamily}
             {modifyEditor.hit.bold ? ' bold' : ''}
             {modifyEditor.hit.italic ? ' italic' : ''} {Math.round(modifyEditor.hit.fontSize)}pt
           </div>

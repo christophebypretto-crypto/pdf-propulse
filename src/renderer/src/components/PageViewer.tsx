@@ -14,6 +14,7 @@ interface Props {
   numPages: number
   currentPage: number
   setCurrentPage: (n: number) => void
+  setZoom: (delta: number | 'fit') => void
   scale: number
   tool: Tool
   annotations: Annotation[]
@@ -82,6 +83,33 @@ export default function PageViewer(p: Props): JSX.Element {
       root.scrollTo({ top: targetTop, behavior: 'smooth' })
     }
   }, [p.currentPage])
+
+  // Zoom au pinch trackpad ET ⌘/Ctrl + molette
+  // Sur Mac : pinch trackpad envoie wheel events avec ctrlKey=true (convention Chromium)
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) return
+    let accumulated = 0
+    let raf = 0
+    const flush = () => {
+      raf = 0
+      if (accumulated === 0) return
+      const delta = accumulated > 0 ? -0.1 : 0.1
+      accumulated = 0
+      p.setZoom(delta)
+    }
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      accumulated += e.deltaY
+      if (!raf) raf = requestAnimationFrame(flush)
+    }
+    root.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      root.removeEventListener('wheel', onWheel)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [p.setZoom])
 
   // Detecte la page visible au scroll pour mettre a jour currentPage
   useEffect(() => {
