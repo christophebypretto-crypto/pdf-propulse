@@ -14,7 +14,6 @@ fileAssociations:
     description: Document PDF — éditable avec PDF 100K
     role: Editor
     rank: Alternate
-    icon: build/icon.icns
     mimeType: application/pdf
 publish:
   - provider: github
