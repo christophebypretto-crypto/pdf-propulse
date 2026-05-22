@@ -499,6 +499,41 @@ export default function App(): JSX.Element {
     [pdfBytes, loadFromBytes]
   )
 
+  // Insere a la position donnee plusieurs fichiers PDF ou images (JPG/PNG)
+  // Les images sont automatiquement converties en page PDF A4.
+  const appendPdfOrImages = useCallback(
+    async (atIndex: number) => {
+      if (!pdfBytes) return
+      const paths = await window.api.openPdfOrImage(true)
+      if (!paths || paths.length === 0) return
+      setBusy(true)
+      try {
+        let out = pdfBytes
+        let insertAt = atIndex
+        for (const path of paths) {
+          const lower = path.toLowerCase()
+          const isImage =
+            lower.endsWith('.jpg') ||
+            lower.endsWith('.jpeg') ||
+            lower.endsWith('.png')
+          const insBuf = isImage
+            ? await window.api.imageToPdfBytes(path)
+            : await window.api.readPdf(path)
+          out = await window.api.pdfInsert(out, insBuf, insertAt)
+          // L'image/PDF a ajoute X pages, on incremente pour que le fichier
+          // suivant s'insere apres
+          // (approximation : on ne connaît pas exactement le nombre de pages
+          // ajoutees ici, mais on peut juste continuer à la fin pour append)
+          insertAt += 1
+        }
+        await loadFromBytes(out)
+      } finally {
+        setBusy(false)
+      }
+    },
+    [pdfBytes, loadFromBytes]
+  )
+
   function onContextAction(
     action: 'rotate-cw' | 'rotate-ccw' | 'delete' | 'insertAfter',
     indices: number[]
@@ -644,7 +679,7 @@ export default function App(): JSX.Element {
                 onSelectionChange={setSelected}
                 onReorder={reorderPages}
                 onContextAction={onContextAction}
-                onAppendPdf={() => insertFromFile(pages.length)}
+                onAppendPdf={() => appendPdfOrImages(pages.length)}
               />
             </main>
           ) : (

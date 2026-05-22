@@ -2,9 +2,11 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 
 export interface Api {
   openPdf: (multi?: boolean) => Promise<string[] | null>
+  openPdfOrImage: (multi?: boolean) => Promise<string[] | null>
   savePdf: (defaultName?: string) => Promise<string | null>
   readPdf: (filePath: string) => Promise<ArrayBuffer>
   writePdf: (filePath: string, data: ArrayBuffer) => Promise<boolean>
+  imageToPdfBytes: (imagePath: string) => Promise<ArrayBuffer>
   pdfMerge: (files: ArrayBuffer[]) => Promise<ArrayBuffer>
   pdfSplit: (
     data: ArrayBuffer,

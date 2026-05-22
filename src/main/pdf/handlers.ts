@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { readFile } from 'fs/promises'
 import { PDFDocument, degrees } from 'pdf-lib'
 
 async function loadDoc(data: ArrayBuffer): Promise<PDFDocument> {
@@ -105,6 +106,46 @@ export function registerPdfHandlers(): void {
       copied.forEach((p) => out.addPage(p))
       const bytes = await out.save()
       return toArrayBuffer(bytes)
+    }
+  )
+
+  // Convertit une image JPG/PNG en un PDF d'une page (A4 portrait ou paysage selon ratio).
+  ipcMain.handle(
+    'pdf:imageToPdfBytes',
+    async (_evt, imagePath: string): Promise<ArrayBuffer> => {
+      const buf = await readFile(imagePath)
+      const lower = imagePath.toLowerCase()
+      const isPng = lower.endsWith('.png')
+      const doc = await PDFDocument.create()
+      const bytes = new Uint8Array(buf)
+      const img = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes)
+
+      // A4 595×842 pt. Orientation auto selon ratio image.
+      const A4_W = 595
+      const A4_H = 842
+      const aspect = img.width / img.height
+      const isLandscape = aspect > 1
+      const pageW = isLandscape ? A4_H : A4_W
+      const pageH = isLandscape ? A4_W : A4_H
+
+      const page = doc.addPage([pageW, pageH])
+      const margin = 20
+      const maxW = pageW - margin * 2
+      const maxH = pageH - margin * 2
+      let drawW = maxW
+      let drawH = drawW / aspect
+      if (drawH > maxH) {
+        drawH = maxH
+        drawW = drawH * aspect
+      }
+      page.drawImage(img, {
+        x: (pageW - drawW) / 2,
+        y: (pageH - drawH) / 2,
+        width: drawW,
+        height: drawH
+      })
+      const out = await doc.save()
+      return toArrayBuffer(out)
     }
   )
 }

@@ -85,10 +85,15 @@ export default function ThumbnailGrid({
           const isSel = selected.has(i)
           const isCur = i === currentPage
           const isDropTarget = dropIdx === i && draggingIdx !== i
+          const isBeingDragged = draggingIdx === i
           return (
             <div
               key={`${p.srcIndex}-${i}`}
-              className="flex flex-col items-center gap-1"
+              className="flex flex-col items-center gap-1 relative transition-transform duration-150"
+              style={{
+                transform: isDropTarget ? 'translateX(14px)' : 'translateX(0)',
+                opacity: isBeingDragged ? 0.4 : 1
+              }}
               draggable
               onDragStart={() => setDraggingIdx(i)}
               onDragOver={(e) => {
@@ -114,6 +119,12 @@ export default function ThumbnailGrid({
                 setMenu({ i, x: e.clientX, y: e.clientY })
               }}
             >
+              {isDropTarget && (
+                <div
+                  className="absolute -left-2 top-0 bottom-6 w-1.5 bg-pretto rounded-full shadow-lg animate-pulse"
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
               <div
                 onClick={(e) => handleClick(i, e)}
                 onDoubleClick={() => onOpenPage(i)}
@@ -121,8 +132,7 @@ export default function ThumbnailGrid({
                   'page-thumb relative',
                   isSel ? 'selected' : '',
                   isCur ? 'ring-2 ring-pretto ring-offset-2 shadow-md' : '',
-                  draggingIdx === i ? 'dragging' : '',
-                  isDropTarget ? 'ring-2 ring-olive ring-offset-2' : ''
+                  draggingIdx === i ? 'dragging' : ''
                 ].join(' ')}
                 style={{
                   width: 200,
@@ -153,12 +163,16 @@ export default function ThumbnailGrid({
               width: 200,
               height: pages.length > 0 ? (200 * pages[0].height) / pages[0].width : 280
             }}
-            title="Ajouter un PDF à la suite"
+            title="Ajouter un PDF ou une image (JPG/PNG) — l'image sera convertie en page A4"
           >
             <span className="text-4xl leading-none">+</span>
-            <span className="text-xs font-medium">Ajouter PDF</span>
+            <span className="text-xs font-medium leading-tight text-center">
+              Ajouter PDF
+              <br />
+              ou image
+            </span>
           </button>
-          <div className="text-xs text-black/40">à la suite</div>
+          <div className="text-xs text-black/40">JPG/PNG auto en A4</div>
         </div>
       </div>
 

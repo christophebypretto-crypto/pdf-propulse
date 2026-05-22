@@ -180,6 +180,20 @@ app.whenReady().then(() => {
     return result.filePaths
   })
 
+  ipcMain.handle('dialog:openPdfOrImage', async (_evt, multi: boolean = false) => {
+    const result = await dialog.showOpenDialog({
+      title: 'Ajouter un PDF ou une image',
+      filters: [
+        { name: 'PDF ou image', extensions: ['pdf', 'jpg', 'jpeg', 'png'] },
+        { name: 'PDF', extensions: ['pdf'] },
+        { name: 'Images', extensions: ['jpg', 'jpeg', 'png'] }
+      ],
+      properties: multi ? ['openFile', 'multiSelections'] : ['openFile']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths
+  })
+
   ipcMain.handle('dialog:savePdf', async (_evt, defaultName?: string) => {
     const result = await dialog.showSaveDialog({
       title: 'Enregistrer le PDF',
