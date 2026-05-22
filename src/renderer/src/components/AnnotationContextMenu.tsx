@@ -1,4 +1,11 @@
-export type AnnotationAction = 'copy' | 'cut' | 'paste' | 'duplicate' | 'remove'
+export type AnnotationAction =
+  | 'copy'
+  | 'cut'
+  | 'paste'
+  | 'duplicate'
+  | 'remove'
+  | 'rotate-cw'
+  | 'rotate-ccw'
 
 interface Props {
   x: number
@@ -14,12 +21,15 @@ const items: {
   shortcut: string
   destructive?: boolean
   needsClipboard?: boolean
+  separator?: boolean
 }[] = [
   { id: 'copy', label: 'Copier', shortcut: '⌘C' },
   { id: 'cut', label: 'Couper', shortcut: '⌘X' },
   { id: 'paste', label: 'Coller', shortcut: '⌘V', needsClipboard: true },
   { id: 'duplicate', label: 'Dupliquer', shortcut: '⌘D' },
-  { id: 'remove', label: 'Supprimer', shortcut: '⌫', destructive: true }
+  { id: 'rotate-cw', label: 'Pivoter 90° (horaire)', shortcut: '↻', separator: true },
+  { id: 'rotate-ccw', label: 'Pivoter 90° (anti-horaire)', shortcut: '↺' },
+  { id: 'remove', label: 'Supprimer', shortcut: '⌫', destructive: true, separator: true }
 ]
 
 export default function AnnotationContextMenu({
@@ -49,26 +59,28 @@ export default function AnnotationContextMenu({
         {items.map((it) => {
           const disabled = it.needsClipboard && !canPaste
           return (
-            <button
-              key={it.id}
-              disabled={disabled}
-              onClick={() => {
-                if (disabled) return
-                onAction(it.id)
-                onClose()
-              }}
-              className={[
-                'flex items-center justify-between w-full text-left px-3 py-1.5 transition-colors',
-                disabled
-                  ? 'text-black/30 cursor-not-allowed'
-                  : it.destructive
-                    ? 'text-red-600 hover:bg-red-500 hover:text-white'
-                    : 'text-ink hover:bg-pretto hover:text-white'
-              ].join(' ')}
-            >
-              <span>{it.label}</span>
-              <span className="text-xs opacity-60 ml-4 font-mono">{it.shortcut}</span>
-            </button>
+            <div key={it.id}>
+              {it.separator && <div className="my-0.5 border-t border-black/10" />}
+              <button
+                disabled={disabled}
+                onClick={() => {
+                  if (disabled) return
+                  onAction(it.id)
+                  onClose()
+                }}
+                className={[
+                  'flex items-center justify-between w-full text-left px-3 py-1.5 transition-colors',
+                  disabled
+                    ? 'text-black/30 cursor-not-allowed'
+                    : it.destructive
+                      ? 'text-red-600 hover:bg-red-500 hover:text-white'
+                      : 'text-ink hover:bg-pretto hover:text-white'
+                ].join(' ')}
+              >
+                <span>{it.label}</span>
+                <span className="text-xs opacity-60 ml-4 font-mono">{it.shortcut}</span>
+              </button>
+            </div>
           )
         })}
       </div>

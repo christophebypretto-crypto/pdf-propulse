@@ -31,6 +31,7 @@ interface Props {
     hit: import('../lib/textEdit').TextHit,
     newText: string
   ) => void
+  onRotateAnnotation: (id: string, deltaDeg: number) => void
   formFields: FormField[]
   onAddFormField: (f: FormField) => void
   onRemoveFormField: (id: string) => void
@@ -163,6 +164,7 @@ export default function PageViewer(p: Props): JSX.Element {
               onPasteAnnotation={p.onPasteAnnotation}
               canPasteAnnotation={p.canPasteAnnotation}
               onCommitModifyText={p.onCommitModifyText}
+              onRotateAnnotation={p.onRotateAnnotation}
               formFields={p.formFields}
               onAddFormField={p.onAddFormField}
               onRemoveFormField={p.onRemoveFormField}

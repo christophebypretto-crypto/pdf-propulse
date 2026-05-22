@@ -11,7 +11,7 @@ import {
 import { FormField, newFieldId } from '../lib/forms'
 import { Tool } from './Sidebar'
 import AnnotationContextMenu, { AnnotationAction } from './AnnotationContextMenu'
-import { findTextAtPoint, fontFamilyToCss, TextHit } from '../lib/textEdit'
+import { findTextAtPoint, fontFamilyToCss, getAllTextItems, TextHit } from '../lib/textEdit'
 
 // Le type TextLayer n'est pas exporte dans les declarations TS de pdfjs-dist 4.x
 // mais existe à runtime ; on l'aliasse en type minimal
@@ -36,6 +36,7 @@ interface Props {
   onPasteAnnotation: () => void
   canPasteAnnotation: boolean
   onCommitModifyText: (pageIndex: number, hit: TextHit, newText: string) => void
+  onRotateAnnotation: (id: string, deltaDeg: number) => void
   formFields: FormField[]
   onAddFormField: (f: FormField) => void
   onRemoveFormField: (id: string) => void
@@ -89,6 +90,7 @@ export default function PageCanvas({
   onPasteAnnotation,
   canPasteAnnotation,
   onCommitModifyText,
+  onRotateAnnotation,
   formFields,
   onAddFormField,
   onRemoveFormField,
@@ -119,6 +121,26 @@ export default function PageCanvas({
     annotationId: string
   } | null>(null)
   const [modifyEditor, setModifyEditor] = useState<{ hit: TextHit; draft: string } | null>(null)
+  const [allTextItems, setAllTextItems] = useState<TextHit[]>([])
+
+  // En mode modify-text, charge tous les items texte de la page pour les rendre cliquables
+  useEffect(() => {
+    if (tool !== 'modify-text' || !pdfDoc) {
+      setAllTextItems([])
+      return
+    }
+    let cancelled = false
+    getAllTextItems(pdfDoc, pageIndex)
+      .then((items) => {
+        if (!cancelled) setAllTextItems(items)
+      })
+      .catch(() => {
+        if (!cancelled) setAllTextItems([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tool, pdfDoc, pageIndex])
 
   function openAnnotationMenu(x: number, y: number, id: string): void {
     setContextMenu({ x, y, annotationId: id })
@@ -132,6 +154,8 @@ export default function PageCanvas({
     else if (action === 'paste') onPasteAnnotation()
     else if (action === 'duplicate') onDuplicateAnnotation(id)
     else if (action === 'remove') onRemoveAnnotation(id)
+    else if (action === 'rotate-cw') onRotateAnnotation(id, -90) // visuel horaire = -90 PDF
+    else if (action === 'rotate-ccw') onRotateAnnotation(id, 90) // visuel anti-horaire = +90 PDF
   }
   const [draftHL, setDraftHL] = useState<DraftHighlight | null>(null)
   const [draftPen, setDraftPen] = useState<DraftPen | null>(null)
@@ -623,6 +647,40 @@ export default function PageCanvas({
           </div>
         ))}
 
+      {/* Mode Modifier : overlay sur chaque bloc de texte pour montrer où cliquer */}
+      {tool === 'modify-text' &&
+        pageSize &&
+        !modifyEditor &&
+        allTextItems.map((item, idx) => {
+          const rotated = Math.abs(item.rotation) > 0.5
+          return (
+            <div
+              key={`txt-${idx}`}
+              className="absolute border border-dashed border-pretto/40 hover:border-pretto hover:bg-pretto/15 transition-colors"
+              style={{
+                left: item.baselineX * pageSize.w,
+                top: item.baselineY * pageSize.h,
+                width: item.textWidth * pageSize.w,
+                height: item.textHeight * pageSize.h,
+                transform: rotated
+                  ? `rotate(${-item.rotation}deg) translateY(-100%)`
+                  : 'translateY(-100%)',
+                transformOrigin: '0 100%',
+                zIndex: 6,
+                cursor: 'text'
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                setModifyEditor({ hit: item, draft: item.text })
+              }}
+              title={`Cliquer pour modifier : "${item.text.substring(0, 50)}${
+                item.text.length > 50 ? '…' : ''
+              }"`}
+            />
+          )
+        })}
+
       {/* Couche de capture event mouse — uniquement quand un tool est actif ET pas de texte en cours */}
       {interactive && pageSize && !pendingText && (
         <div
@@ -948,28 +1006,32 @@ function DraggableTextAnnotation({
       >
         {a.text}
       </pre>
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onDuplicate(a.id)
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute -top-2 -right-9 w-6 h-6 bg-pretto text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
-        title="Dupliquer"
-      >
-        ⧉
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onRemove(a.id)
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
-        title="Supprimer"
-      >
-        ✕
-      </button>
+      {isSelected && (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDuplicate(a.id)
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute -top-2 -right-9 w-6 h-6 bg-pretto text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+            title="Dupliquer"
+          >
+            ⧉
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(a.id)
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+            title="Supprimer"
+          >
+            ✕
+          </button>
+        </>
+      )}
     </div>
   )
 }
@@ -1061,7 +1123,9 @@ function DraggableImageAnnotation({
         zIndex: isSelected ? 12 : 8,
         cursor: 'move',
         outline: isSelected ? '2px solid #0C806E' : 'none',
-        outlineOffset: 1
+        outlineOffset: 1,
+        transform: a.rotation ? `rotate(${-a.rotation}deg)` : undefined,
+        transformOrigin: '50% 50%'
       }}
       onMouseDown={startDrag('move')}
       onContextMenu={(e) => {
@@ -1078,34 +1142,37 @@ function DraggableImageAnnotation({
         draggable={false}
       />
       <div className="absolute inset-0 border border-dashed border-transparent group-hover:border-pretto/60 rounded-sm" />
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onDuplicate(a.id)
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute -top-2 -right-9 w-6 h-6 bg-pretto text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
-        title="Dupliquer"
-      >
-        ⧉
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onRemove(a.id)
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
-        title="Supprimer"
-      >
-        ✕
-      </button>
-      {/* Poignée redimensionnement coin bas-droit */}
-      <div
-        onMouseDown={startDrag('resize')}
-        className="absolute -bottom-1 -right-1 w-3 h-3 bg-pretto opacity-0 group-hover:opacity-100 rounded-sm cursor-nwse-resize"
-        title="Redimensionner"
-      />
+      {isSelected && (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDuplicate(a.id)
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute -top-2 -right-9 w-6 h-6 bg-pretto text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+            title="Dupliquer"
+          >
+            ⧉
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(a.id)
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+            title="Supprimer"
+          >
+            ✕
+          </button>
+          <div
+            onMouseDown={startDrag('resize')}
+            className="absolute -bottom-1 -right-1 w-3 h-3 bg-pretto rounded-sm cursor-nwse-resize"
+            title="Redimensionner"
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -1197,7 +1264,9 @@ function DraggableHighlightAnnotation({
         zIndex: isSelected ? 12 : 7,
         cursor: 'move',
         outline: isSelected ? '2px solid #0C806E' : 'none',
-        outlineOffset: 0
+        outlineOffset: 0,
+        transform: a.rotation ? `rotate(${-a.rotation}deg)` : undefined,
+        transformOrigin: '50% 50%'
       }}
       onMouseDown={startDrag('move')}
       onContextMenu={(e) => {
@@ -1211,33 +1280,37 @@ function DraggableHighlightAnnotation({
         className="absolute inset-0 pointer-events-none rounded-sm"
         style={{ backgroundColor: a.color, opacity: a.opacity ?? 0.35 }}
       />
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onDuplicate(a.id)
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute -top-2 -right-9 w-6 h-6 bg-pretto text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
-        title="Dupliquer"
-      >
-        ⧉
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onRemove(a.id)
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
-        title="Supprimer"
-      >
-        ✕
-      </button>
-      <div
-        onMouseDown={startDrag('resize')}
-        className="absolute -bottom-1 -right-1 w-3 h-3 bg-pretto opacity-0 group-hover:opacity-100 rounded-sm cursor-nwse-resize"
-        title="Redimensionner"
-      />
+      {isSelected && (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDuplicate(a.id)
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute -top-2 -right-9 w-6 h-6 bg-pretto text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+            title="Dupliquer"
+          >
+            ⧉
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(a.id)
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+            title="Supprimer"
+          >
+            ✕
+          </button>
+          <div
+            onMouseDown={startDrag('resize')}
+            className="absolute -bottom-1 -right-1 w-3 h-3 bg-pretto rounded-sm cursor-nwse-resize"
+            title="Redimensionner"
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -1352,33 +1425,37 @@ function DraggableEraserAnnotation({
       }}
       title="Zone effacée · Glisse pour déplacer · Clic-droit pour menu"
     >
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onDuplicate(a.id)
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute -top-2 -right-9 w-6 h-6 bg-pretto text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
-        title="Dupliquer"
-      >
-        ⧉
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onRemove(a.id)
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
-        title="Supprimer"
-      >
-        ✕
-      </button>
-      <div
-        onMouseDown={startDrag('resize')}
-        className="absolute -bottom-1 -right-1 w-3 h-3 bg-pretto opacity-0 group-hover:opacity-100 rounded-sm cursor-nwse-resize"
-        title="Redimensionner"
-      />
+      {isSelected && (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDuplicate(a.id)
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute -top-2 -right-9 w-6 h-6 bg-pretto text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+            title="Dupliquer"
+          >
+            ⧉
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(a.id)
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow-md ring-2 ring-white hover:scale-110 transition-transform"
+            title="Supprimer"
+          >
+            ✕
+          </button>
+          <div
+            onMouseDown={startDrag('resize')}
+            className="absolute -bottom-1 -right-1 w-3 h-3 bg-pretto rounded-sm cursor-nwse-resize"
+            title="Redimensionner"
+          />
+        </>
+      )}
     </div>
   )
 }

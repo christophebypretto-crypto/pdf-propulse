@@ -20,6 +20,7 @@ export interface HighlightAnnotation extends BaseAnnotation {
   rect: { x: number; y: number; w: number; h: number } // normalise [0,1]
   color: string // hex
   opacity?: number // 0..1, defaut 0.35
+  rotation?: number // degres convention PDF (counterclockwise positive). Pivot = centre du rect.
 }
 
 export interface PenAnnotation extends BaseAnnotation {
@@ -52,6 +53,7 @@ export interface ImageAnnotation extends BaseAnnotation {
   w: number
   h: number
   dataUrl: string // PNG dataURL
+  rotation?: number // degres convention PDF (counterclockwise positive). Pivot = centre de l'image.
 }
 
 export interface EraserAnnotation extends BaseAnnotation {
@@ -80,6 +82,29 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 // Convertit y "top-left normalise" → coord PDF "bottom-left en points"
 function toPdfY(yNorm: number, pageHeight: number): number {
   return (1 - yNorm) * pageHeight
+}
+
+/**
+ * Pour rotation autour du CENTRE : calcule le bottom-left a passer a pdf-lib
+ * pour qu'apres rotation autour de (x_new, y_new), le centre soit au meme endroit.
+ */
+function bottomLeftForCenterRotation(
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  rotDeg: number
+): { x: number; y: number } {
+  const rad = (rotDeg * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  // Centre = (x_new + (w/2)cos - (h/2)sin, y_new + (w/2)sin + (h/2)cos)
+  // donc : x_new = cx - (w/2)cos + (h/2)sin
+  //        y_new = cy - (w/2)sin - (h/2)cos
+  return {
+    x: cx - (w / 2) * cos + (h / 2) * sin,
+    y: cy - (w / 2) * sin - (h / 2) * cos
+  }
 }
 
 function pickStandardFontEnum(
@@ -140,19 +165,33 @@ export async function applyAnnotationsToPdf(
 
     if (a.kind === 'highlight') {
       const c = hexToRgb(a.color)
-      const x = a.rect.x * pw
-      const y = toPdfY(a.rect.y + a.rect.h, ph)
-      const w = a.rect.w * pw
-      const h = a.rect.h * ph
-      page.drawRectangle({
-        x,
-        y,
-        width: w,
-        height: h,
-        color: rgb(c.r, c.g, c.b),
-        opacity: a.opacity ?? 0.35,
-        rotate: degrees(0)
-      })
+      const wPdf = a.rect.w * pw
+      const hPdf = a.rect.h * ph
+      const rotDeg = a.rotation || 0
+      if (Math.abs(rotDeg) > 0.001) {
+        // Rotation autour du centre
+        const cx = (a.rect.x + a.rect.w / 2) * pw
+        const cy = toPdfY(a.rect.y + a.rect.h / 2, ph)
+        const bl = bottomLeftForCenterRotation(cx, cy, wPdf, hPdf, rotDeg)
+        page.drawRectangle({
+          x: bl.x,
+          y: bl.y,
+          width: wPdf,
+          height: hPdf,
+          color: rgb(c.r, c.g, c.b),
+          opacity: a.opacity ?? 0.35,
+          rotate: degrees(rotDeg)
+        })
+      } else {
+        page.drawRectangle({
+          x: a.rect.x * pw,
+          y: toPdfY(a.rect.y + a.rect.h, ph),
+          width: wPdf,
+          height: hPdf,
+          color: rgb(c.r, c.g, c.b),
+          opacity: a.opacity ?? 0.35
+        })
+      }
     } else if (a.kind === 'pen') {
       const c = hexToRgb(a.color)
       const pts = a.points
@@ -248,11 +287,28 @@ export async function applyAnnotationsToPdf(
         img = await doc.embedPng(bytes)
         imageCache.set(a.dataUrl, img)
       }
-      const x = a.x * pw
-      const y = toPdfY(a.y + a.h, ph)
-      const w = a.w * pw
-      const h = a.h * ph
-      page.drawImage(img, { x, y, width: w, height: h })
+      const wPdf = a.w * pw
+      const hPdf = a.h * ph
+      const rotDeg = a.rotation || 0
+      if (Math.abs(rotDeg) > 0.001) {
+        const cx = (a.x + a.w / 2) * pw
+        const cy = toPdfY(a.y + a.h / 2, ph)
+        const bl = bottomLeftForCenterRotation(cx, cy, wPdf, hPdf, rotDeg)
+        page.drawImage(img, {
+          x: bl.x,
+          y: bl.y,
+          width: wPdf,
+          height: hPdf,
+          rotate: degrees(rotDeg)
+        })
+      } else {
+        page.drawImage(img, {
+          x: a.x * pw,
+          y: toPdfY(a.y + a.h, ph),
+          width: wPdf,
+          height: hPdf
+        })
+      }
     }
   }
 

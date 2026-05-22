@@ -240,6 +240,25 @@ export default function App(): JSX.Element {
     if (clipboardAnnotation) pasteAnnotation(clipboardAnnotation, currentPage)
   }, [clipboardAnnotation, currentPage, pasteAnnotation])
 
+  const rotateAnnotationById = useCallback((id: string, deltaDeg: number) => {
+    setAnnotations((prev) =>
+      prev.map((a) => {
+        if (a.id !== id) return a
+        if (
+          a.kind === 'text' ||
+          a.kind === 'eraser' ||
+          a.kind === 'image' ||
+          a.kind === 'highlight'
+        ) {
+          const newRot = (((a.rotation || 0) + deltaDeg) % 360 + 360) % 360
+          return { ...a, rotation: newRot === 0 ? undefined : newRot } as Annotation
+        }
+        return a
+      })
+    )
+    setDirty(true)
+  }, [])
+
   const duplicateAnnotation = useCallback((id: string) => {
     setAnnotations((prev) => {
       const orig = prev.find((a) => a.id === id)
@@ -658,6 +677,7 @@ export default function App(): JSX.Element {
                   onPasteAnnotation={pasteAtCurrent}
                   canPasteAnnotation={clipboardAnnotation !== null}
                   onCommitModifyText={handleCommitModifyText}
+                  onRotateAnnotation={rotateAnnotationById}
                   formFields={formFields}
                   onAddFormField={addFormField}
                   onRemoveFormField={removeFormField}
