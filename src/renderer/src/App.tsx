@@ -365,10 +365,15 @@ export default function App(): JSX.Element {
       const idEraser = 'a_' + Math.random().toString(36).slice(2, 9)
       const idNew = 'a_' + Math.random().toString(36).slice(2, 9)
 
-      // Rectangle blanc opaque qui couvre exactement le texte original.
-      // Preview correct (le canvas pdfjs montre l'original, le rect le couvre visuellement).
-      // Pour effacer un watermark recurrent sans cacher le contenu en dessous,
-      // utiliser plutôt le tool Effacer → "Supprimer un texte récurrent…"
+      // Estime la largeur du nouveau texte pour étendre l'eraser si nécessaire.
+      // On utilise la largeur moyenne par caractère du texte original (mesurée
+      // par pdfjs) puis on extrapole sur le nombre de caractères du nouveau texte.
+      // +10% de marge de sécurité pour les caractères larges (W, M, etc.).
+      const origLen = Math.max(1, hit.text.length)
+      const avgCharW = hit.textWidth / origLen
+      const estimatedNewWidth = newText.length * avgCharW * 1.1
+      const effectiveWidth = Math.max(hit.textWidth, estimatedNewWidth)
+
       const eraser: Annotation = isRotated
         ? {
             id: idEraser,
@@ -378,7 +383,7 @@ export default function App(): JSX.Element {
             rect: {
               x: hit.baselineX,
               y: hit.baselineY,
-              w: hit.textWidth,
+              w: effectiveWidth,
               h: hit.textHeight
             },
             color: '#FFFFFF',
@@ -393,15 +398,19 @@ export default function App(): JSX.Element {
             rect: {
               x: hit.baselineX,
               y: Math.max(0, hit.baselineY - hit.textHeight),
-              w: hit.textWidth,
+              w: effectiveWidth,
               h: hit.textHeight
             },
             color: '#FFFFFF'
           }
 
       if (newText.trim() === '') {
-        // Effacement pur
-        setAnnotations((prev) => [...prev, eraser])
+        // Effacement pur — utilise l'ancienne largeur (pas besoin d'extension)
+        const eraserClean: Annotation =
+          eraser.kind === 'eraser'
+            ? { ...eraser, rect: { ...eraser.rect, w: hit.textWidth } }
+            : eraser
+        setAnnotations((prev) => [...prev, eraserClean])
         setDirty(true)
         return
       }
@@ -419,11 +428,10 @@ export default function App(): JSX.Element {
         fontFamily: hit.fontFamily,
         bold: hit.bold,
         italic: hit.italic,
-        rotation: hit.rotation // 0 si non-rotated, sinon angle
+        rotation: hit.rotation
       }
 
       setAnnotations((prev) => [...prev, eraser, replacement])
-      // PAS d'auto-select : evite de polluer la vue avec les boutons inutiles
       setDirty(true)
     },
     []
