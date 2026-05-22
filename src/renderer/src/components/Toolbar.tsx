@@ -271,6 +271,16 @@ export default function Toolbar(p: Props): JSX.Element {
               )}
             </div>
           )}
+          {p.tool === 'modify-text' && (
+            <div className="text-black/60">
+              <strong>Clique sur un texte du PDF</strong> pour le modifier · police, taille et style
+              sont automatiquement repris ·{' '}
+              <span className="text-xs">
+                limite : si la police originale est exotique, le rendu utilise une police standard équivalente
+                (Helvetica/Times/Courier)
+              </span>
+            </div>
+          )}
           {p.tool === 'eraser' && (
             <>
               <span className="text-black/60">

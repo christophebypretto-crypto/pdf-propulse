@@ -3,6 +3,7 @@ export type Tool =
   | 'annotate-highlight'
   | 'annotate-pen'
   | 'annotate-text'
+  | 'modify-text'
   | 'sign'
   | 'eraser'
   | 'ocr'
@@ -22,6 +23,12 @@ const TOOLS: ToolDef[] = [
   { id: 'annotate-highlight', label: 'Surligner', icon: '▭', hint: 'Glisser pour surligner' },
   { id: 'annotate-pen', label: 'Crayon', icon: '✎', hint: 'Dessiner à main levée' },
   { id: 'annotate-text', label: 'Texte', icon: 'T', hint: 'Clique pour ajouter du texte' },
+  {
+    id: 'modify-text',
+    label: 'Modifier',
+    icon: '✎T',
+    hint: 'Clique sur un texte existant pour le modifier (police/taille reprises)'
+  },
   { id: 'sign', label: 'Signature', icon: '✍', hint: 'Dessiner ou importer une signature' },
   {
     id: 'eraser',

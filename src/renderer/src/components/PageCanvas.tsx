@@ -11,6 +11,7 @@ import {
 import { FormField, newFieldId } from '../lib/forms'
 import { Tool } from './Sidebar'
 import AnnotationContextMenu, { AnnotationAction } from './AnnotationContextMenu'
+import { findTextAtPoint, fontFamilyToCss, TextHit } from '../lib/textEdit'
 
 // Le type TextLayer n'est pas exporte dans les declarations TS de pdfjs-dist 4.x
 // mais existe à runtime ; on l'aliasse en type minimal
@@ -34,6 +35,7 @@ interface Props {
   onCutAnnotation: (id: string) => void
   onPasteAnnotation: () => void
   canPasteAnnotation: boolean
+  onCommitModifyText: (pageIndex: number, hit: TextHit, newText: string) => void
   formFields: FormField[]
   onAddFormField: (f: FormField) => void
   onRemoveFormField: (id: string) => void
@@ -86,6 +88,7 @@ export default function PageCanvas({
   onCutAnnotation,
   onPasteAnnotation,
   canPasteAnnotation,
+  onCommitModifyText,
   formFields,
   onAddFormField,
   onRemoveFormField,
@@ -115,6 +118,7 @@ export default function PageCanvas({
     y: number
     annotationId: string
   } | null>(null)
+  const [modifyEditor, setModifyEditor] = useState<{ hit: TextHit; draft: string } | null>(null)
 
   function openAnnotationMenu(x: number, y: number, id: string): void {
     setContextMenu({ x, y, annotationId: id })
@@ -293,6 +297,12 @@ export default function PageCanvas({
     } else if (tool === 'annotate-text') {
       const p = toNorm(e)
       setPendingText({ x: p.x, y: p.y, value: '' })
+    } else if (tool === 'modify-text' && pdfDoc) {
+      const p = toNorm(e)
+      // Trouve le texte sous le clic — fire-and-forget (onMouseDown ne peut pas etre async)
+      findTextAtPoint(pdfDoc, pageIndex, p.x, p.y).then((hit) => {
+        if (hit) setModifyEditor({ hit, draft: hit.text })
+      })
     } else if (tool === 'sign' && signatureDataUrl) {
       const p = toNorm(e)
       onAddAnnotation({
@@ -399,6 +409,7 @@ export default function PageCanvas({
     (tool === 'annotate-highlight' && highlightMode === 'shape') ||
     tool === 'annotate-pen' ||
     tool === 'annotate-text' ||
+    tool === 'modify-text' ||
     tool === 'form-text' ||
     tool === 'form-checkbox' ||
     tool === 'eraser' ||
@@ -407,7 +418,8 @@ export default function PageCanvas({
     !ocrZoneActive &&
     ((tool === 'annotate-highlight' && highlightMode === 'text') ||
       tool === 'pages' ||
-      tool === 'ocr')
+      tool === 'ocr' ||
+      tool === 'modify-text')
 
   return (
     <div
@@ -692,6 +704,70 @@ export default function PageCanvas({
           />
           <div className="text-[10px] text-black bg-pretto/90 text-white mt-1 px-1.5 py-0.5 rounded inline-block">
             ⌘+Entrée pour valider · Echap pour annuler
+          </div>
+        </div>
+      )}
+
+      {/* Editeur "Modifier texte" — apparait sur clic d'un texte du PDF */}
+      {modifyEditor && pageSize && (
+        <div
+          className="absolute"
+          style={{
+            left: modifyEditor.hit.x * pageSize.w,
+            top: modifyEditor.hit.y * pageSize.h,
+            zIndex: 25
+          }}
+        >
+          <textarea
+            ref={(el) => {
+              if (el && document.activeElement !== el) {
+                requestAnimationFrame(() => {
+                  el.focus()
+                  el.setSelectionRange(0, el.value.length)
+                })
+              }
+            }}
+            rows={1}
+            value={modifyEditor.draft}
+            onChange={(e) =>
+              setModifyEditor({ ...modifyEditor, draft: e.target.value })
+            }
+            onBlur={() => {
+              if (modifyEditor.draft !== modifyEditor.hit.text) {
+                onCommitModifyText(pageIndex, modifyEditor.hit, modifyEditor.draft)
+              }
+              setModifyEditor(null)
+            }}
+            onKeyDown={(e) => {
+              e.stopPropagation()
+              if (e.key === 'Escape') {
+                setModifyEditor(null)
+              } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                if (modifyEditor.draft !== modifyEditor.hit.text) {
+                  onCommitModifyText(pageIndex, modifyEditor.hit, modifyEditor.draft)
+                }
+                setModifyEditor(null)
+              }
+            }}
+            className="border-2 border-pretto rounded-sm outline-none bg-white shadow-lg resize-none whitespace-nowrap"
+            style={{
+              fontFamily: fontFamilyToCss(modifyEditor.hit.fontFamily),
+              fontSize: modifyEditor.hit.fontSize * scale,
+              fontWeight: modifyEditor.hit.bold ? 'bold' : 'normal',
+              fontStyle: modifyEditor.hit.italic ? 'italic' : 'normal',
+              color: 'black',
+              minWidth: modifyEditor.hit.width * pageSize.w + 40,
+              padding: '0 2px',
+              lineHeight: '1',
+              boxSizing: 'content-box',
+              height: modifyEditor.hit.fontSize * scale * 1.25
+            }}
+          />
+          <div className="text-[10px] text-white bg-pretto/90 mt-1 px-1.5 py-0.5 rounded inline-block">
+            ⌘+Entrée valider · Echap annuler · Police {modifyEditor.hit.fontFamily}
+            {modifyEditor.hit.bold ? ' bold' : ''}
+            {modifyEditor.hit.italic ? ' italic' : ''} {Math.round(modifyEditor.hit.fontSize)}pt
           </div>
         </div>
       )}

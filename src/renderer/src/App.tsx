@@ -15,6 +15,7 @@ import { renderPagesToThumbnails } from './lib/pdfRender'
 import { Annotation, applyAnnotationsToPdf } from './lib/annotations'
 import { FormField, applyFormFieldsToPdf } from './lib/forms'
 import { ocrOnZone } from './lib/searchable'
+import type { TextHit } from './lib/textEdit'
 
 export default function App(): JSX.Element {
   const [filePath, setFilePath] = useState<string | null>(null)
@@ -339,6 +340,44 @@ export default function App(): JSX.Element {
     setDirty(true)
   }, [])
 
+  const handleCommitModifyText = useCallback(
+    (pageIdx: number, hit: TextHit, newText: string) => {
+      const idA = 'a_' + Math.random().toString(36).slice(2, 9)
+      const idB = 'a_' + Math.random().toString(36).slice(2, 9)
+      // Eraser pour recouvrir l'original
+      const eraser: Annotation = {
+        id: idA,
+        kind: 'eraser',
+        pageIndex: pageIdx,
+        rect: {
+          x: hit.x,
+          y: hit.y,
+          w: hit.width,
+          h: hit.height
+        },
+        color: '#FFFFFF'
+      }
+      // Nouveau texte avec meme police/style/taille
+      const text: Annotation = {
+        id: idB,
+        kind: 'text',
+        pageIndex: pageIdx,
+        x: hit.x,
+        y: hit.y,
+        text: newText,
+        size: hit.fontSize,
+        color: '#000000',
+        fontFamily: hit.fontFamily,
+        bold: hit.bold,
+        italic: hit.italic
+      }
+      setAnnotations((prev) => [...prev, eraser, text])
+      setSelectedAnnotationId(idB)
+      setDirty(true)
+    },
+    []
+  )
+
   const rotatePages = useCallback(
     async (angle: 0 | 90 | 180 | 270, indices?: number[]) => {
       if (!pdfBytes) return
@@ -596,6 +635,7 @@ export default function App(): JSX.Element {
                   onCutAnnotation={cutAnnotationById}
                   onPasteAnnotation={pasteAtCurrent}
                   canPasteAnnotation={clipboardAnnotation !== null}
+                  onCommitModifyText={handleCommitModifyText}
                   formFields={formFields}
                   onAddFormField={addFormField}
                   onRemoveFormField={removeFormField}

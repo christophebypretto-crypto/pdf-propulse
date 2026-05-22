@@ -36,6 +36,10 @@ export interface TextAnnotation extends BaseAnnotation {
   text: string
   size: number // pt en PDF
   color: string
+  // Style optionnel — utilise quand on modifie du texte existant
+  fontFamily?: 'helvetica' | 'times' | 'courier'
+  bold?: boolean
+  italic?: boolean
 }
 
 export interface ImageAnnotation extends BaseAnnotation {
@@ -71,6 +75,30 @@ function toPdfY(yNorm: number, pageHeight: number): number {
   return (1 - yNorm) * pageHeight
 }
 
+function pickStandardFontEnum(
+  family?: 'helvetica' | 'times' | 'courier',
+  bold?: boolean,
+  italic?: boolean
+): StandardFonts {
+  const f = family || 'helvetica'
+  if (f === 'times') {
+    if (bold && italic) return StandardFonts.TimesRomanBoldItalic
+    if (bold) return StandardFonts.TimesRomanBold
+    if (italic) return StandardFonts.TimesRomanItalic
+    return StandardFonts.TimesRoman
+  }
+  if (f === 'courier') {
+    if (bold && italic) return StandardFonts.CourierBoldOblique
+    if (bold) return StandardFonts.CourierBold
+    if (italic) return StandardFonts.CourierOblique
+    return StandardFonts.Courier
+  }
+  if (bold && italic) return StandardFonts.HelveticaBoldOblique
+  if (bold) return StandardFonts.HelveticaBold
+  if (italic) return StandardFonts.HelveticaOblique
+  return StandardFonts.Helvetica
+}
+
 /** Applique toutes les annotations dans le PDF et renvoie un nouvel ArrayBuffer */
 export async function applyAnnotationsToPdf(
   data: ArrayBuffer,
@@ -78,6 +106,20 @@ export async function applyAnnotationsToPdf(
 ): Promise<ArrayBuffer> {
   const doc = await PDFDocument.load(data, { ignoreEncryption: true })
   const font = await doc.embedFont(StandardFonts.Helvetica)
+  // Cache pour eviter de re-embedder le meme StandardFont plusieurs fois
+  const fontCache = new Map<StandardFonts, Awaited<ReturnType<typeof doc.embedFont>>>()
+  fontCache.set(StandardFonts.Helvetica, font)
+  const getFont = async (
+    family?: 'helvetica' | 'times' | 'courier',
+    bold?: boolean,
+    italic?: boolean
+  ) => {
+    const e = pickStandardFontEnum(family, bold, italic)
+    if (fontCache.has(e)) return fontCache.get(e)!
+    const f = await doc.embedFont(e)
+    fontCache.set(e, f)
+    return f
+  }
   const pages = doc.getPages()
 
   // Cache des images embed (pour ne pas re-embed la meme signature N fois)
@@ -120,6 +162,7 @@ export async function applyAnnotationsToPdf(
       }
     } else if (a.kind === 'text') {
       const c = hexToRgb(a.color)
+      const textFont = await getFont(a.fontFamily, a.bold, a.italic)
       const lines = a.text.split('\n')
       const lineHeight = a.size * 1.25
       lines.forEach((ln, i) => {
@@ -130,7 +173,7 @@ export async function applyAnnotationsToPdf(
           x,
           y,
           size: a.size,
-          font,
+          font: textFont,
           color: rgb(c.r, c.g, c.b)
         })
       })

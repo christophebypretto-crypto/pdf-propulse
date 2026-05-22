@@ -25,6 +25,11 @@ interface Props {
   onCutAnnotation: (id: string) => void
   onPasteAnnotation: () => void
   canPasteAnnotation: boolean
+  onCommitModifyText: (
+    pageIndex: number,
+    hit: import('../lib/textEdit').TextHit,
+    newText: string
+  ) => void
   formFields: FormField[]
   onAddFormField: (f: FormField) => void
   onRemoveFormField: (id: string) => void
@@ -129,6 +134,7 @@ export default function PageViewer(p: Props): JSX.Element {
               onCutAnnotation={p.onCutAnnotation}
               onPasteAnnotation={p.onPasteAnnotation}
               canPasteAnnotation={p.canPasteAnnotation}
+              onCommitModifyText={p.onCommitModifyText}
               formFields={p.formFields}
               onAddFormField={p.onAddFormField}
               onRemoveFormField={p.onRemoveFormField}
