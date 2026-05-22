@@ -209,7 +209,8 @@ export async function applyAnnotationsToPdf(
     } else if (a.kind === 'text') {
       const c = hexToRgb(a.color)
       const textFont = await getFont(a.fontFamily, a.bold, a.italic)
-      if (a.rotation !== undefined && Math.abs(a.rotation) > 0.001) {
+      if (a.rotation !== undefined) {
+        // Mode baseline-left activé dès que rotation est defini (peut être 0)
         // Rotated: (x, y) = baseline-left ; multi-lignes peu probable mais on supporte
         const lines = a.text.split('\n')
         const xBase = a.x * pw

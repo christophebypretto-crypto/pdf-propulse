@@ -1,5 +1,49 @@
-import { PDFDocument, rgb, degrees } from 'pdf-lib'
+import { PDFDocument, rgb, degrees, StandardFonts, PDFFont } from 'pdf-lib'
 import * as pdfjsLib from 'pdfjs-dist'
+
+function classifyFontName(name: string): {
+  family: 'helvetica' | 'times' | 'courier'
+  bold: boolean
+  italic: boolean
+} {
+  const lower = name.toLowerCase()
+  const bold =
+    lower.includes('bold') ||
+    lower.includes('heavy') ||
+    lower.includes('black') ||
+    lower.includes('semibold')
+  const italic = lower.includes('italic') || lower.includes('oblique')
+  let family: 'helvetica' | 'times' | 'courier' = 'helvetica'
+  if (lower.includes('times') || (lower.includes('serif') && !lower.includes('sans'))) {
+    family = 'times'
+  } else if (lower.includes('courier') || lower.includes('mono')) {
+    family = 'courier'
+  }
+  return { family, bold, italic }
+}
+
+function pickFont(
+  family: 'helvetica' | 'times' | 'courier',
+  bold: boolean,
+  italic: boolean
+): StandardFonts {
+  if (family === 'times') {
+    if (bold && italic) return StandardFonts.TimesRomanBoldItalic
+    if (bold) return StandardFonts.TimesRomanBold
+    if (italic) return StandardFonts.TimesRomanItalic
+    return StandardFonts.TimesRoman
+  }
+  if (family === 'courier') {
+    if (bold && italic) return StandardFonts.CourierBoldOblique
+    if (bold) return StandardFonts.CourierBold
+    if (italic) return StandardFonts.CourierOblique
+    return StandardFonts.Courier
+  }
+  if (bold && italic) return StandardFonts.HelveticaBoldOblique
+  if (bold) return StandardFonts.HelveticaBold
+  if (italic) return StandardFonts.HelveticaOblique
+  return StandardFonts.Helvetica
+}
 
 export interface TextRemovalResult {
   bytes: ArrayBuffer
@@ -28,13 +72,22 @@ export async function removeTextFromPdf(
   let removedCount = 0
   const pagesAffected = new Set<number>()
 
+  // Cache des fonts embedded pour ne pas re-embedder
+  const fontCache = new Map<StandardFonts, PDFFont>()
+  const getEmbeddedFont = async (sf: StandardFonts): Promise<PDFFont> => {
+    if (fontCache.has(sf)) return fontCache.get(sf)!
+    const f = await doc.embedFont(sf)
+    fontCache.set(sf, f)
+    return f
+  }
+
   const needle = options.caseSensitive ? searchText : searchText.toUpperCase()
 
   for (let i = 0; i < pdfjsDoc.numPages; i++) {
     const pdfjsPage = await pdfjsDoc.getPage(i + 1)
     const textContent = await pdfjsPage.getTextContent()
     const page = doc.getPages()[i]
-    const { height: ph } = page.getSize()
+    const styles = textContent.styles as Record<string, { fontFamily?: string }>
 
     for (const item of textContent.items) {
       if (!('str' in item)) continue
@@ -43,52 +96,33 @@ export async function removeTextFromPdf(
       if (!itemUp.includes(needle)) continue
 
       const t = item.transform as number[]
-      // t = [a, b, c, d, e, f] => matrice 2D affine
-      // (a, b) = colonne X, (c, d) = colonne Y, (e, f) = translation
       const a = t[0]
       const b = t[1]
-      // const c = t[2]
-      const d = t[3]
       const e = t[4]
       const f = t[5]
 
       const rotationRad = Math.atan2(b, a)
       const rotationDeg = (rotationRad * 180) / Math.PI
+      const fontSize = Math.hypot(a, b)
 
-      // Taille du texte (echelle)
-      const scaleX = Math.hypot(a, b)
-      const scaleY = Math.hypot(t[2], d) || scaleX
+      // Detecte la police
+      const fontName = item.fontName || ''
+      const styleName = styles[fontName]?.fontFamily || fontName
+      const cls = classifyFontName(styleName)
+      const sf = pickFont(cls.family, cls.bold, cls.italic)
+      const font = await getEmbeddedFont(sf)
 
-      const itemW = (item.width || itemStr.length * 5) * 1.0
-      const itemH = (item.height || scaleY) * 1.1
-
-      // pdfjs renvoie (e, f) en coords PDF user space, origine bottom-left,
-      // au niveau de la baseline du texte. On veut le coin bottom-left du rectangle.
-      // Le texte s'etend vers la droite et vers le HAUT depuis (e, f).
-      // Pour un rectangle qui couvre le texte : x = e, y = f - descent
-      // (descent ~ 20% de la hauteur)
-      void scaleX
-      const padX = 1
-      const padY = 1
-      const rectX = e - padX
-      const rectY = f - itemH * 0.25 - padY
-      const rectW = itemW + padX * 2
-      const rectH = itemH + padY * 2
-
-      // pdf-lib drawRectangle avec rotation : la rotation est appliquee autour du
-      // coin bas-gauche (x, y). On utilise donc les coords du coin (en PDF) puis
-      // on rotate. La translation est deja dans (e, f), pas besoin d'ajuster.
-      page.drawRectangle({
-        x: rectX,
-        y: rectY,
-        width: rectW,
-        height: rectH,
+      // Dessine le texte EN BLANC à la meme position/police/rotation.
+      // Cela couvre les pixels des LETTRES (pas un rectangle), donc le
+      // contenu en dessous (table, autres elements) reste visible autour.
+      page.drawText(itemStr, {
+        x: e,
+        y: f,
+        size: fontSize,
+        font,
         color: rgb(1, 1, 1),
-        opacity: 1,
         rotate: degrees(rotationDeg)
       })
-      // height limit (avoid huge rectangles from pathological data)
-      void ph
       removedCount++
       pagesAffected.add(i)
     }

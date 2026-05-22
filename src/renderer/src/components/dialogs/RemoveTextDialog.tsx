@@ -79,9 +79,10 @@ export default function RemoveTextDialog({ pdfBytes, onClose, onDone }: Props): 
       }
     >
       <p className="text-sm text-black/60 mb-3">
-        Cherche le texte dans tout le PDF et recouvre chaque occurrence avec un rectangle blanc opaque (en
-        respectant la rotation du texte). Idéal pour effacer des watermarks comme <strong>BROUILLON</strong>,{' '}
-        <strong>DRAFT</strong>, <strong>COPY</strong>, ou des mentions répétées.
+        Cherche le texte dans tout le PDF et redessine chaque occurrence <strong>en blanc</strong> avec la
+        même police/taille/rotation. Seuls les pixels des <strong>lettres</strong> sont couverts — le
+        contenu autour (tableaux, autres textes) reste visible. Idéal pour effacer des watermarks{' '}
+        <strong>BROUILLON</strong>, <strong>DRAFT</strong>, <strong>COPY</strong>.
       </p>
       <label className="block text-sm font-medium mb-1">Texte à supprimer</label>
       <input
@@ -128,10 +129,8 @@ export default function RemoveTextDialog({ pdfBytes, onClose, onDone }: Props): 
         <div className="mt-3 p-3 rounded-md bg-red-50 text-red-700 text-sm">{error}</div>
       )}
       <p className="text-xs text-black/40 mt-4">
-        ⚠️ Note : pour un watermark superposé au contenu, le rectangle blanc recouvre uniquement la zone du
-        texte du watermark — donc le contenu légitime autour reste intact. Aux endroits où le texte du
-        watermark chevauche du contenu, ce contenu sera caché aussi (c'est inhérent à la nature des
-        watermarks).
+        💡 Le masquage utilise la police standard la plus proche (Helvetica/Times/Courier). Si l'original
+        utilise une police exotique, des micro-pixels gris peuvent subsister sur les bords des lettres.
       </p>
     </Dialog>
   )

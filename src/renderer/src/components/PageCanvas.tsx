@@ -953,11 +953,12 @@ function DraggableTextAnnotation({
     )
   }
 
-  const rotated = a.rotation !== undefined && Math.abs(a.rotation) > 0.001
-  const rotatedStyle = rotated
+  // Mode baseline-left dès que rotation est defini (même =0)
+  const useBaseline = a.rotation !== undefined
+  const rotatedStyle = useBaseline
     ? {
         // (a.x, a.y) = baseline-left ; box monte depuis ce point
-        transform: `rotate(${-a.rotation!}deg) translateY(-100%)`,
+        transform: `rotate(${-(a.rotation || 0)}deg) translateY(-100%)`,
         transformOrigin: '0 100%'
       }
     : {}
