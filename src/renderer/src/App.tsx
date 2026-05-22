@@ -361,36 +361,52 @@ export default function App(): JSX.Element {
 
   const handleCommitModifyText = useCallback(
     (pageIdx: number, hit: TextHit, newText: string) => {
-      // Mask = texte BLANC dessiné a la même position/police/rotation que l'original.
-      // Cela couvre uniquement les pixels des LETTRES (pas le rectangle entier),
-      // donc le contenu en dessous (table, etc.) reste visible autour.
-      const idMask = 'a_' + Math.random().toString(36).slice(2, 9)
+      const isRotated = Math.abs(hit.rotation) > 0.5
+      const idEraser = 'a_' + Math.random().toString(36).slice(2, 9)
       const idNew = 'a_' + Math.random().toString(36).slice(2, 9)
 
-      const mask: Annotation = {
-        id: idMask,
-        kind: 'text',
-        pageIndex: pageIdx,
-        x: hit.baselineX,
-        y: hit.baselineY,
-        text: hit.text,
-        size: hit.fontSize,
-        color: '#FFFFFF',
-        fontFamily: hit.fontFamily,
-        bold: hit.bold,
-        italic: hit.italic,
-        rotation: hit.rotation // peut être 0, force baseline-mode
-      }
+      // Rectangle blanc opaque qui couvre exactement le texte original.
+      // Preview correct (le canvas pdfjs montre l'original, le rect le couvre visuellement).
+      // Pour effacer un watermark recurrent sans cacher le contenu en dessous,
+      // utiliser plutôt le tool Effacer → "Supprimer un texte récurrent…"
+      const eraser: Annotation = isRotated
+        ? {
+            id: idEraser,
+            kind: 'eraser',
+            pageIndex: pageIdx,
+            // Pivot = baseline-left, rect monte depuis le pivot par textHeight
+            rect: {
+              x: hit.baselineX,
+              y: hit.baselineY,
+              w: hit.textWidth,
+              h: hit.textHeight
+            },
+            color: '#FFFFFF',
+            rotation: hit.rotation
+          }
+        : {
+            id: idEraser,
+            kind: 'eraser',
+            pageIndex: pageIdx,
+            // Pour non-rotated : (rect.x, rect.y) = top-left du rect.
+            // top du rect = baselineY - textHeight (au-dessus de la baseline)
+            rect: {
+              x: hit.baselineX,
+              y: Math.max(0, hit.baselineY - hit.textHeight),
+              w: hit.textWidth,
+              h: hit.textHeight
+            },
+            color: '#FFFFFF'
+          }
 
-      if (newText.trim() === '' || newText === hit.text) {
-        // Effacement pur (pas de remplacement) ou aucune modif
-        setAnnotations((prev) => [...prev, mask])
-        setSelectedAnnotationId(idMask)
+      if (newText.trim() === '') {
+        // Effacement pur
+        setAnnotations((prev) => [...prev, eraser])
         setDirty(true)
         return
       }
 
-      // Remplacement : mask + nouveau texte par-dessus
+      // Nouveau texte par-dessus, en baseline-mode (rotation = 0 active baseline)
       const replacement: Annotation = {
         id: idNew,
         kind: 'text',
@@ -403,11 +419,11 @@ export default function App(): JSX.Element {
         fontFamily: hit.fontFamily,
         bold: hit.bold,
         italic: hit.italic,
-        rotation: hit.rotation
+        rotation: hit.rotation // 0 si non-rotated, sinon angle
       }
 
-      setAnnotations((prev) => [...prev, mask, replacement])
-      setSelectedAnnotationId(idNew)
+      setAnnotations((prev) => [...prev, eraser, replacement])
+      // PAS d'auto-select : evite de polluer la vue avec les boutons inutiles
       setDirty(true)
     },
     []
