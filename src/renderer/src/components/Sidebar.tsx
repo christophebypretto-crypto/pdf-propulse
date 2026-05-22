@@ -27,7 +27,8 @@ const TOOLS: ToolDef[] = [
     id: 'modify-text',
     label: 'Modifier',
     icon: '✎T',
-    hint: 'Clique sur un texte existant pour le modifier (police/taille reprises)'
+    hint: 'Bientôt — édition fine du texte natif PDF (en cours de perfectionnement)',
+    disabled: true
   },
   { id: 'sign', label: 'Signature', icon: '✍', hint: 'Dessiner ou importer une signature' },
   {
