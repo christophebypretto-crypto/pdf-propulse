@@ -895,6 +895,15 @@ function DraggableTextAnnotation({
     )
   }
 
+  const rotated = a.rotation !== undefined && Math.abs(a.rotation) > 0.001
+  const rotatedStyle = rotated
+    ? {
+        // (a.x, a.y) = baseline-left ; box monte depuis ce point
+        transform: `rotate(${-a.rotation!}deg) translateY(-100%)`,
+        transformOrigin: '0 100%'
+      }
+    : {}
+
   return (
     <div
       className="absolute group"
@@ -909,7 +918,8 @@ function DraggableTextAnnotation({
           : hovered
             ? '1px dashed rgba(12,128,110,0.6)'
             : '1px dashed transparent',
-        borderRadius: 3
+        borderRadius: 3,
+        ...rotatedStyle
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -1308,6 +1318,15 @@ function DraggableEraserAnnotation({
     }
   }
 
+  const rotated = a.rotation !== undefined && Math.abs(a.rotation) > 0.001
+  const rotatedStyle = rotated
+    ? {
+        // (rect.x, rect.y) = baseline-left pivot ; box monte au-dessus
+        transform: `rotate(${-a.rotation!}deg) translateY(-100%)`,
+        transformOrigin: '0 100%'
+      }
+    : {}
+
   return (
     <div
       className="absolute group"
@@ -1322,7 +1341,8 @@ function DraggableEraserAnnotation({
         border: isSelected
           ? '2px solid #0C806E'
           : '1px dashed rgba(12,128,110,0.6)',
-        borderRadius: 1
+        borderRadius: 1,
+        ...rotatedStyle
       }}
       onMouseDown={startDrag('move')}
       onContextMenu={(e) => {
@@ -1330,7 +1350,7 @@ function DraggableEraserAnnotation({
         onSelect()
         onContextMenu(e.clientX, e.clientY, a.id)
       }}
-      title="Zone effacée · Glisse pour déplacer · Coin pour redimensionner · Clic-droit pour menu"
+      title="Zone effacée · Glisse pour déplacer · Clic-droit pour menu"
     >
       <button
         onClick={(e) => {

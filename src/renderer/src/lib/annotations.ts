@@ -31,7 +31,7 @@ export interface PenAnnotation extends BaseAnnotation {
 
 export interface TextAnnotation extends BaseAnnotation {
   kind: 'text'
-  x: number // top-left, normalise
+  x: number // top-left normalise [0,1] (origin top-left). Quand rotation est defini : (x,y) = baseline-left du texte.
   y: number
   text: string
   size: number // pt en PDF
@@ -40,6 +40,9 @@ export interface TextAnnotation extends BaseAnnotation {
   fontFamily?: 'helvetica' | 'times' | 'courier'
   bold?: boolean
   italic?: boolean
+  // Rotation en degres (convention PDF : counterclockwise positive)
+  // Quand defini et non nul, (x, y) represente le baseline-left du texte (pas le top-left de bbox).
+  rotation?: number
 }
 
 export interface ImageAnnotation extends BaseAnnotation {
@@ -55,6 +58,10 @@ export interface EraserAnnotation extends BaseAnnotation {
   kind: 'eraser'
   rect: { x: number; y: number; w: number; h: number } // normalise [0,1]
   color?: string // hex, defaut blanc #FFFFFF
+  // Rotation en degres (convention PDF : counterclockwise positive).
+  // Quand defini et non nul, rect.x/rect.y = point pivot (= baseline-left du texte d'origine) ;
+  // le rectangle s'etend vers la droite (rect.w) et vers le HAUT en PDF (rect.h) et tourne autour du pivot.
+  rotation?: number
 }
 
 export function newId(): string {
@@ -163,36 +170,74 @@ export async function applyAnnotationsToPdf(
     } else if (a.kind === 'text') {
       const c = hexToRgb(a.color)
       const textFont = await getFont(a.fontFamily, a.bold, a.italic)
-      const lines = a.text.split('\n')
-      const lineHeight = a.size * 1.25
-      lines.forEach((ln, i) => {
-        const x = a.x * pw
-        // y top-left de la 1ere ligne → on baisse de fontHeight pour la baseline
-        const y = toPdfY(a.y, ph) - a.size - i * lineHeight
-        page.drawText(ln, {
-          x,
-          y,
-          size: a.size,
-          font: textFont,
-          color: rgb(c.r, c.g, c.b)
+      if (a.rotation !== undefined && Math.abs(a.rotation) > 0.001) {
+        // Rotated: (x, y) = baseline-left ; multi-lignes peu probable mais on supporte
+        const lines = a.text.split('\n')
+        const xBase = a.x * pw
+        const yBase = toPdfY(a.y, ph)
+        lines.forEach((ln, i) => {
+          // Decale chaque ligne sur l'axe perpendiculaire a la rotation
+          const rad = (a.rotation! * Math.PI) / 180
+          const dx = -i * a.size * 1.25 * Math.sin(rad)
+          const dy = -i * a.size * 1.25 * Math.cos(rad)
+          page.drawText(ln, {
+            x: xBase + dx,
+            y: yBase + dy,
+            size: a.size,
+            font: textFont,
+            color: rgb(c.r, c.g, c.b),
+            rotate: degrees(a.rotation!)
+          })
         })
-      })
+      } else {
+        const lines = a.text.split('\n')
+        const lineHeight = a.size * 1.25
+        lines.forEach((ln, i) => {
+          const x = a.x * pw
+          // y top-left de la 1ere ligne → on baisse de fontHeight pour la baseline
+          const y = toPdfY(a.y, ph) - a.size - i * lineHeight
+          page.drawText(ln, {
+            x,
+            y,
+            size: a.size,
+            font: textFont,
+            color: rgb(c.r, c.g, c.b)
+          })
+        })
+      }
       // Ignore rotation for now (rotation parameter unused)
       void rotation
     } else if (a.kind === 'eraser') {
       const c = hexToRgb(a.color || '#FFFFFF')
-      const x = a.rect.x * pw
-      const y = toPdfY(a.rect.y + a.rect.h, ph)
-      const w = a.rect.w * pw
-      const h = a.rect.h * ph
-      page.drawRectangle({
-        x,
-        y,
-        width: w,
-        height: h,
-        color: rgb(c.r, c.g, c.b),
-        opacity: 1
-      })
+      if (a.rotation !== undefined && Math.abs(a.rotation) > 0.001) {
+        // rect.x/y = pivot (baseline-left), rect.w/h = dimensions ; rect "monte" depuis le pivot
+        const x = a.rect.x * pw
+        const y = toPdfY(a.rect.y, ph) // pivot Y en PDF
+        const w = a.rect.w * pw
+        const h = a.rect.h * ph
+        page.drawRectangle({
+          x,
+          y,
+          width: w,
+          height: h,
+          color: rgb(c.r, c.g, c.b),
+          opacity: 1,
+          rotate: degrees(a.rotation)
+        })
+      } else {
+        const x = a.rect.x * pw
+        const y = toPdfY(a.rect.y + a.rect.h, ph)
+        const w = a.rect.w * pw
+        const h = a.rect.h * ph
+        page.drawRectangle({
+          x,
+          y,
+          width: w,
+          height: h,
+          color: rgb(c.r, c.g, c.b),
+          opacity: 1
+        })
+      }
     } else if (a.kind === 'image') {
       let img = imageCache.get(a.dataUrl)
       if (!img) {

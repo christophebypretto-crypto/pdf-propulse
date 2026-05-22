@@ -2,15 +2,25 @@ import * as pdfjsLib from 'pdfjs-dist'
 
 export interface TextHit {
   text: string
-  // Coords normalisees [0,1], origine top-left de la page
+  // AABB (axis-aligned bounding box) en coords normalisees [0,1] (origin top-left de la page)
+  // Utilise pour positionner l'editeur horizontal au-dessus du texte
   x: number
   y: number
   width: number
   height: number
+  // Baseline-left du texte original en coords normalisees [0,1] (origin top-left)
+  // Utilise pour creer les annotations (eraser + texte) avec rotation
+  baselineX: number
+  baselineY: number
+  // Dimensions reelles du texte (pas l'AABB) en coords normalisees
+  textWidth: number
+  textHeight: number
   fontSize: number // taille en points PDF
   fontFamily: 'helvetica' | 'times' | 'courier'
   bold: boolean
   italic: boolean
+  // Rotation en degres (convention PDF : counterclockwise positive). 0 = texte horizontal
+  rotation: number
 }
 
 function classifyFont(name: string): {
@@ -63,32 +73,67 @@ export async function findTextAtPoint(
   for (const item of tc.items) {
     if (!('str' in item) || !item.str) continue
     const t = item.transform as number[]
+    const a = t[0]
+    const b = t[1]
+    const c = t[2]
+    const d = t[3]
     const e = t[4]
     const f = t[5]
     const w = item.width || 0
     const h = item.height || 0
     if (w <= 0 || h <= 0) continue
 
-    // Bounding box approx en coords PDF (texte non-rotated)
-    // (e, f) est la baseline-left du texte ; le texte monte de "h" au-dessus
-    if (px < e || px > e + w) continue
-    if (py < f || py > f + h) continue
+    const scaleX = Math.hypot(a, b) || 1
+    const scaleY = Math.hypot(c, d) || scaleX
 
-    const fontSize = Math.hypot(t[0], t[1]) || h
+    // Project click into text-local coords (handles any rotation)
+    const dx = px - e
+    const dy = py - f
+    const projX = (dx * a + dy * b) / scaleX
+    const projY = (dx * c + dy * d) / scaleY
+    if (projX < 0 || projX > w) continue
+    if (projY < 0 || projY > h) continue
+
+    // Hit !
+    const rotationRad = Math.atan2(b, a)
+    const rotationDeg = (rotationRad * 180) / Math.PI
+
+    // 4 corners du texte rotated en coords PDF (bottom-left origin)
+    const ux = a / scaleX
+    const uy = b / scaleX // direction unitaire de l'axe X du texte
+    const vx = c / scaleY
+    const vy = d / scaleY // direction unitaire de l'axe Y du texte
+    const corners = [
+      { x: e, y: f }, // baseline-left
+      { x: e + w * ux, y: f + w * uy }, // baseline-right
+      { x: e + h * vx, y: f + h * vy }, // top-left
+      { x: e + w * ux + h * vx, y: f + w * uy + h * vy } // top-right
+    ]
+    const minX = Math.min(...corners.map((p) => p.x))
+    const maxX = Math.max(...corners.map((p) => p.x))
+    const minY = Math.min(...corners.map((p) => p.y))
+    const maxY = Math.max(...corners.map((p) => p.y))
+
+    const fontSize = scaleX
     const fontName = item.fontName || ''
     const styleName = styles[fontName]?.fontFamily || fontName
     const cls = classifyFont(styleName)
 
     return {
       text: item.str,
-      x: e / pageW,
-      y: (pageH - f - h) / pageH,
-      width: w / pageW,
-      height: h / pageH,
+      x: minX / pageW,
+      y: (pageH - maxY) / pageH,
+      width: (maxX - minX) / pageW,
+      height: (maxY - minY) / pageH,
+      baselineX: e / pageW,
+      baselineY: (pageH - f) / pageH,
+      textWidth: w / pageW,
+      textHeight: h / pageH,
       fontSize,
       fontFamily: cls.family,
       bold: cls.bold,
-      italic: cls.italic
+      italic: cls.italic,
+      rotation: rotationDeg
     }
   }
   return null

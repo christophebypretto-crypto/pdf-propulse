@@ -344,33 +344,54 @@ export default function App(): JSX.Element {
     (pageIdx: number, hit: TextHit, newText: string) => {
       const idA = 'a_' + Math.random().toString(36).slice(2, 9)
       const idB = 'a_' + Math.random().toString(36).slice(2, 9)
-      // Eraser pour recouvrir l'original
-      const eraser: Annotation = {
-        id: idA,
-        kind: 'eraser',
-        pageIndex: pageIdx,
-        rect: {
-          x: hit.x,
-          y: hit.y,
-          w: hit.width,
-          h: hit.height
-        },
-        color: '#FFFFFF'
-      }
-      // Nouveau texte avec meme police/style/taille
-      const text: Annotation = {
-        id: idB,
-        kind: 'text',
-        pageIndex: pageIdx,
-        x: hit.x,
-        y: hit.y,
-        text: newText,
-        size: hit.fontSize,
-        color: '#000000',
-        fontFamily: hit.fontFamily,
-        bold: hit.bold,
-        italic: hit.italic
-      }
+      const isRotated = Math.abs(hit.rotation) > 0.5
+
+      const eraser: Annotation = isRotated
+        ? {
+            id: idA,
+            kind: 'eraser',
+            pageIndex: pageIdx,
+            rect: { x: hit.baselineX, y: hit.baselineY, w: hit.textWidth, h: hit.textHeight },
+            color: '#FFFFFF',
+            rotation: hit.rotation
+          }
+        : {
+            id: idA,
+            kind: 'eraser',
+            pageIndex: pageIdx,
+            rect: { x: hit.x, y: hit.y, w: hit.width, h: hit.height },
+            color: '#FFFFFF'
+          }
+
+      const text: Annotation = isRotated
+        ? {
+            id: idB,
+            kind: 'text',
+            pageIndex: pageIdx,
+            x: hit.baselineX,
+            y: hit.baselineY,
+            text: newText,
+            size: hit.fontSize,
+            color: '#000000',
+            fontFamily: hit.fontFamily,
+            bold: hit.bold,
+            italic: hit.italic,
+            rotation: hit.rotation
+          }
+        : {
+            id: idB,
+            kind: 'text',
+            pageIndex: pageIdx,
+            x: hit.x,
+            y: hit.y,
+            text: newText,
+            size: hit.fontSize,
+            color: '#000000',
+            fontFamily: hit.fontFamily,
+            bold: hit.bold,
+            italic: hit.italic
+          }
+
       setAnnotations((prev) => [...prev, eraser, text])
       setSelectedAnnotationId(idB)
       setDirty(true)
