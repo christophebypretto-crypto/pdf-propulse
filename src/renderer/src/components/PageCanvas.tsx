@@ -418,8 +418,8 @@ export default function PageCanvas({
     !ocrZoneActive &&
     ((tool === 'annotate-highlight' && highlightMode === 'text') ||
       tool === 'pages' ||
-      tool === 'ocr' ||
-      tool === 'modify-text')
+      tool === 'ocr')
+  // En modify-text on veut que le clic aille à l'overlay interactive (pas à la text layer)
 
   return (
     <div
@@ -627,7 +627,11 @@ export default function PageCanvas({
       {interactive && pageSize && !pendingText && (
         <div
           className="absolute inset-0"
-          style={{ cursor: tool === 'annotate-text' ? 'text' : 'crosshair', zIndex: 5 }}
+          style={{
+            cursor:
+              tool === 'annotate-text' || tool === 'modify-text' ? 'text' : 'crosshair',
+            zIndex: 5
+          }}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
