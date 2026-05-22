@@ -45,6 +45,8 @@ export default function App(): JSX.Element {
   // Comptes miroir : un 2e PDF affiche en parallele a droite pour comparer
   const [mirrorPdfBytes, setMirrorPdfBytes] = useState<ArrayBuffer | null>(null)
   const [mirrorFileName, setMirrorFileName] = useState<string | null>(null)
+  // Drag-and-drop overlay
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false)
   const [penColor, setPenColor] = useState('#1A1A1A')
   const [penWidth, setPenWidth] = useState(3)
   const [textSize, setTextSize] = useState(14)
@@ -104,6 +106,117 @@ export default function App(): JSX.Element {
     })
     return cleanup
   }, [loadFromPath])
+
+  // Drag-and-drop fichiers sur la fenetre : PDF / JPG / PNG
+  useEffect(() => {
+    let dragCounter = 0
+
+    const isImagePath = (p: string): boolean => {
+      const lower = p.toLowerCase()
+      return lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png')
+    }
+    const isPdfPath = (p: string): boolean => p.toLowerCase().endsWith('.pdf')
+
+    const onDragEnter = (e: DragEvent): void => {
+      if (!e.dataTransfer?.types.includes('Files')) return
+      e.preventDefault()
+      dragCounter++
+      setIsDraggingFiles(true)
+    }
+    const onDragOver = (e: DragEvent): void => {
+      if (!e.dataTransfer?.types.includes('Files')) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const onDragLeave = (e: DragEvent): void => {
+      if (!e.dataTransfer?.types.includes('Files')) return
+      e.preventDefault()
+      dragCounter--
+      if (dragCounter <= 0) {
+        dragCounter = 0
+        setIsDraggingFiles(false)
+      }
+    }
+    const onDrop = async (e: DragEvent): Promise<void> => {
+      if (!e.dataTransfer?.types.includes('Files')) return
+      e.preventDefault()
+      dragCounter = 0
+      setIsDraggingFiles(false)
+
+      const files = Array.from(e.dataTransfer.files)
+      if (files.length === 0) return
+
+      // Recupere les paths via webUtils
+      const paths = files
+        .map((f) => window.api.getPathForFile(f))
+        .filter((p) => isPdfPath(p) || isImagePath(p))
+
+      if (paths.length === 0) {
+        window.alert(
+          'Aucun fichier PDF, JPG ou PNG trouvé. Glisse uniquement ces formats.'
+        )
+        return
+      }
+
+      setBusy(true)
+      try {
+        if (!pdfBytes) {
+          // Pas de document ouvert : le 1er fichier devient le doc principal
+          const first = paths[0]
+          const firstBytes = isImagePath(first)
+            ? await window.api.imageToPdfBytes(first)
+            : await window.api.readPdf(first)
+          // Charge le 1er
+          await loadFromBytes(firstBytes, first.split('/').pop() || 'document.pdf')
+
+          // Ajoute les autres a la suite si plusieurs
+          if (paths.length > 1) {
+            let out = firstBytes
+            let insertAt = 1
+            for (let i = 1; i < paths.length; i++) {
+              const p = paths[i]
+              const buf = isImagePath(p)
+                ? await window.api.imageToPdfBytes(p)
+                : await window.api.readPdf(p)
+              out = await window.api.pdfInsert(out, buf, insertAt)
+              insertAt += 1
+            }
+            await loadFromBytes(out)
+          }
+        } else {
+          // Document deja ouvert : append tous les fichiers a la suite
+          let out = pdfBytes
+          let insertAt = pages.length
+          for (const p of paths) {
+            const buf = isImagePath(p)
+              ? await window.api.imageToPdfBytes(p)
+              : await window.api.readPdf(p)
+            out = await window.api.pdfInsert(out, buf, insertAt)
+            insertAt += 1
+          }
+          await loadFromBytes(out)
+        }
+      } catch (err) {
+        window.alert(
+          'Erreur lors de l\'ajout du fichier : ' +
+            (err instanceof Error ? err.message : String(err))
+        )
+      } finally {
+        setBusy(false)
+      }
+    }
+
+    window.addEventListener('dragenter', onDragEnter)
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('dragleave', onDragLeave)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter)
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('dragleave', onDragLeave)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [pdfBytes, pages.length, loadFromBytes])
 
   // Comptes miroir : ouvre un 2e PDF affiche en parallele
   const openMirror = useCallback(async () => {
@@ -866,6 +979,19 @@ export default function App(): JSX.Element {
             )
           }}
         />
+      )}
+
+      {/* Overlay drag-and-drop : visible quand on glisse des fichiers sur la fenetre */}
+      {isDraggingFiles && (
+        <div className="fixed inset-0 z-[1000] bg-pretto/15 backdrop-blur-[2px] pointer-events-none flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl px-10 py-8 border-4 border-dashed border-pretto flex flex-col items-center gap-2">
+            <div className="text-5xl mb-1">📥</div>
+            <div className="text-xl font-semibold text-pretto">
+              {pdfBytes ? 'Ajouter à la suite du document' : 'Ouvrir ce fichier'}
+            </div>
+            <div className="text-sm text-black/60">PDF · JPG · PNG (multi-fichiers OK)</div>
+          </div>
+        </div>
       )}
     </div>
   )

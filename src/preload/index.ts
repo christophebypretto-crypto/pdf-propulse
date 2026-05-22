@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 const api = {
@@ -14,6 +14,8 @@ const api = {
     ipcRenderer.invoke('fs:writePdf', filePath, data),
   imageToPdfBytes: (imagePath: string): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('pdf:imageToPdfBytes', imagePath),
+
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   onFileOpenRequest: (callback: (path: string) => void): (() => void) => {
     const listener = (_e: Electron.IpcRendererEvent, path: string): void => callback(path)
