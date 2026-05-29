@@ -171,11 +171,20 @@ export default function PageCanvas({
       const viewport = page.getViewport({ scale })
       const canvas = canvasRef.current
       if (!canvas) return
-      canvas.width = viewport.width
-      canvas.height = viewport.height
+      // Rendu haute densite : on dessine a la resolution physique de l'ecran
+      // (Retina = 2x) puis on affiche a la taille logique → texte beaucoup plus net.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      canvas.width = Math.floor(viewport.width * dpr)
+      canvas.height = Math.floor(viewport.height * dpr)
+      canvas.style.width = `${Math.floor(viewport.width)}px`
+      canvas.style.height = `${Math.floor(viewport.height)}px`
       const ctx = canvas.getContext('2d')!
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-      await page.render({ canvasContext: ctx, viewport }).promise
+      await page.render({
+        canvasContext: ctx,
+        viewport,
+        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined
+      }).promise
       if (cancelled) return
       setPageSize({ w: viewport.width, h: viewport.height })
 

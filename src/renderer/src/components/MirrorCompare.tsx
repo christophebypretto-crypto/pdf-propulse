@@ -113,6 +113,34 @@ function MirrorPane({
   const [draft, setDraft] = useState<Draft | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Zoom au pinch trackpad ET ⌘/Ctrl + molette (souris)
+  // Sur Mac : un pinch trackpad envoie des wheel events avec ctrlKey=true (convention Chromium)
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) return
+    let accumulated = 0
+    let raf = 0
+    const flush = (): void => {
+      raf = 0
+      if (accumulated === 0) return
+      const delta = accumulated > 0 ? -0.1 : 0.1
+      accumulated = 0
+      setScale((s) => Math.max(0.4, Math.min(2.5, +(s + delta).toFixed(2))))
+    }
+    const onWheel = (e: WheelEvent): void => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      accumulated += e.deltaY
+      if (!raf) raf = requestAnimationFrame(flush)
+    }
+    root.addEventListener('wheel', onWheel, { passive: false })
+    return () => {
+      root.removeEventListener('wheel', onWheel)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
 
   // (re)charge le document quand les bytes changent
   useEffect(() => {
@@ -248,9 +276,9 @@ function MirrorPane({
               {Math.round(scale * 100)}%
             </span>
             <button
-              onClick={() => setScale((s) => Math.min(2, +(s + 0.12).toFixed(2)))}
+              onClick={() => setScale((s) => Math.min(2.5, +(s + 0.12).toFixed(2)))}
               className="w-6 h-6 rounded hover:bg-black/10 text-sm"
-              title="Agrandir"
+              title="Agrandir (ou pincer le trackpad / ⌘+molette)"
             >
               +
             </button>
@@ -278,7 +306,7 @@ function MirrorPane({
       </div>
 
       {/* Corps : pages defilantes */}
-      <div className="flex-1 overflow-auto bg-black/[0.04] py-3 px-2">
+      <div ref={scrollRef} className="flex-1 overflow-auto bg-black/[0.04] py-3 px-2">
         {!doc && (
           <div className="h-full flex flex-col items-center justify-center text-center gap-3 text-black/40">
             <div className="text-4xl">📄</div>
