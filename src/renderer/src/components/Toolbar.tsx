@@ -97,7 +97,7 @@ export default function Toolbar(p: Props): JSX.Element {
                 ? 'bg-olive text-white hover:bg-olive/90'
                 : 'text-ink hover:bg-black/5'
           ].join(' ')}
-          title="Ouvrir un 2e PDF à côté pour comparer (utile pour relevés bancaires)"
+          title="Comparer 2 relevés côte à côte et surligner les virements miroirs"
         >
           ⇄ {p.mirrorActive ? 'Fermer la comparaison' : 'Comptes miroir'}
         </button>

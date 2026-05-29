@@ -6,7 +6,7 @@ import ThumbnailGrid from './components/ThumbnailGrid'
 import PageViewer from './components/PageViewer'
 import EmptyState from './components/EmptyState'
 import OCRPanel from './components/OCRPanel'
-import MirrorViewer from './components/MirrorViewer'
+import MirrorCompare from './components/MirrorCompare'
 import MergeDialog from './components/dialogs/MergeDialog'
 import SplitDialog from './components/dialogs/SplitDialog'
 import ExtractDialog from './components/dialogs/ExtractDialog'
@@ -42,9 +42,8 @@ export default function App(): JSX.Element {
   const [clipboardAnnotation, setClipboardAnnotation] = useState<Annotation | null>(null)
   const [ocrZoneActive, setOcrZoneActive] = useState(false)
   const [ocrZoneResult, setOcrZoneResult] = useState<string | null>(null)
-  // Comptes miroir : un 2e PDF affiche en parallele a droite pour comparer
-  const [mirrorPdfBytes, setMirrorPdfBytes] = useState<ArrayBuffer | null>(null)
-  const [mirrorFileName, setMirrorFileName] = useState<string | null>(null)
+  // Comptes miroir : overlay plein écran avec 2 relevés navigables et surlignables
+  const [mirrorOpen, setMirrorOpen] = useState(false)
   // Drag-and-drop overlay
   const [isDraggingFiles, setIsDraggingFiles] = useState(false)
   const [penColor, setPenColor] = useState('#1A1A1A')
@@ -218,19 +217,9 @@ export default function App(): JSX.Element {
     }
   }, [pdfBytes, pages.length, loadFromBytes])
 
-  // Comptes miroir : ouvre un 2e PDF affiche en parallele
-  const openMirror = useCallback(async () => {
-    const paths = await window.api.openPdf(false)
-    if (!paths || paths.length === 0) return
-    const buf = await window.api.readPdf(paths[0])
-    setMirrorPdfBytes(buf)
-    setMirrorFileName(paths[0].split('/').pop() || 'compte 2')
-  }, [])
-
-  const closeMirror = useCallback(() => {
-    setMirrorPdfBytes(null)
-    setMirrorFileName(null)
-  }, [])
+  // Comptes miroir : ouvre l'overlay de comparaison côte à côte
+  const openMirror = useCallback(() => setMirrorOpen(true), [])
+  const closeMirror = useCallback(() => setMirrorOpen(false), [])
 
   const buildFinalPdf = useCallback(async (): Promise<ArrayBuffer | null> => {
     if (!pdfBytes) return null
@@ -823,7 +812,7 @@ export default function App(): JSX.Element {
         formFieldsCount={formFields.length}
         onOpenMirror={openMirror}
         onCloseMirror={closeMirror}
-        mirrorActive={mirrorPdfBytes !== null}
+        mirrorActive={mirrorOpen}
       />
       <div className="flex flex-1 min-h-0">
         <Sidebar active={tool} onChange={setTool} hasDoc={!!pdfBytes} />
@@ -897,15 +886,6 @@ export default function App(): JSX.Element {
                   }}
                 />
               </main>
-              {mirrorPdfBytes && (
-                <div className="w-1/2 min-w-0">
-                  <MirrorViewer
-                    pdfBytes={mirrorPdfBytes}
-                    fileName={mirrorFileName}
-                    onClose={closeMirror}
-                  />
-                </div>
-              )}
               {tool === 'ocr' && (
                 <OCRPanel
                   pdfBytes={pdfBytes}
@@ -978,6 +958,15 @@ export default function App(): JSX.Element {
                 `Pense à enregistrer (⌘S) pour graver la modification dans le PDF.`
             )
           }}
+        />
+      )}
+
+      {/* Comptes miroir : overlay plein écran de comparaison côte à côte */}
+      {mirrorOpen && (
+        <MirrorCompare
+          mainBytes={pdfBytes}
+          mainName={filePath ? filePath.split('/').pop() || null : null}
+          onClose={closeMirror}
         />
       )}
 
