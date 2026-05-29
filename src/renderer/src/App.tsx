@@ -37,7 +37,7 @@ export default function App(): JSX.Element {
   // Options des outils
   const [highlightColor, setHighlightColor] = useState('#FFF200')
   const [highlightOpacity, setHighlightOpacity] = useState(0.35)
-  const [highlightMode, setHighlightMode] = useState<'shape' | 'text'>('text')
+  const [highlightMode, setHighlightMode] = useState<'shape' | 'text'>('shape')
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
   const [clipboardAnnotation, setClipboardAnnotation] = useState<Annotation | null>(null)
   const [ocrZoneActive, setOcrZoneActive] = useState(false)

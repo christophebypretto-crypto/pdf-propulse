@@ -15,7 +15,9 @@ const PALETTE: { c: string; label: string }[] = [
   { c: '#C9A8FF', label: 'Violet' }
 ]
 
-const TUTO_KEY = 'mirror-tuto-hidden-v1'
+const TUTO_KEY = 'mirror-tuto-hidden-v2'
+
+type Mode = 'highlight' | 'text' | 'erase'
 
 interface Highlight {
   id: string
@@ -25,6 +27,15 @@ interface Highlight {
   w: number
   h: number
   color: string
+}
+
+interface TextNote {
+  id: string
+  pageIndex: number
+  x: number
+  y: number
+  color: string
+  text: string
 }
 
 interface Draft {
@@ -84,13 +95,13 @@ function MirrorPane({
   initialBytes,
   initialName,
   activeColor,
-  eraseMode
+  mode
 }: {
   title: string
   initialBytes: ArrayBuffer | null
   initialName: string | null
   activeColor: string
-  eraseMode: boolean
+  mode: Mode
 }): JSX.Element {
   const [bytes, setBytes] = useState<ArrayBuffer | null>(initialBytes)
   const [name, setName] = useState<string | null>(initialName)
@@ -98,7 +109,9 @@ function MirrorPane({
   const [numPages, setNumPages] = useState(0)
   const [scale, setScale] = useState(0.85)
   const [highlights, setHighlights] = useState<Highlight[]>([])
+  const [texts, setTexts] = useState<TextNote[]>([])
   const [draft, setDraft] = useState<Draft | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   // (re)charge le document quand les bytes changent
@@ -118,6 +131,7 @@ function MirrorPane({
         setDoc(d)
         setNumPages(d.numPages)
         setHighlights([])
+        setTexts([])
         setLoading(false)
       })
       .catch(() => {
@@ -140,11 +154,25 @@ function MirrorPane({
     setHighlights((prev) => prev.filter((h) => h.id !== id))
   }, [])
 
+  const removeText = useCallback((id: string) => {
+    setTexts((prev) => prev.filter((t) => t.id !== id))
+    setEditingId((cur) => (cur === id ? null : cur))
+  }, [])
+
+  const updateText = useCallback((id: string, value: string) => {
+    setTexts((prev) => prev.map((t) => (t.id === id ? { ...t, text: value } : t)))
+  }, [])
+
+  const commitText = useCallback((id: string) => {
+    setTexts((prev) => prev.filter((t) => t.id !== id || t.text.trim() !== ''))
+    setEditingId((cur) => (cur === id ? null : cur))
+  }, [])
+
   const clamp = (v: number): number => Math.max(0, Math.min(1, v))
 
+  // Surlignage (forme) : drag d'un rectangle
   const onPointerDown = (e: React.PointerEvent, pageIndex: number): void => {
-    if (eraseMode || !doc) return
-    if (e.button !== 0) return
+    if (mode !== 'highlight' || !doc || e.button !== 0) return
     const rect = e.currentTarget.getBoundingClientRect()
     const x = clamp((e.clientX - rect.left) / rect.width)
     const y = clamp((e.clientY - rect.top) / rect.height)
@@ -184,6 +212,21 @@ function MirrorPane({
     setDraft(null)
   }
 
+  // Texte : clic pour deposer une note editable
+  const onPageClick = (e: React.MouseEvent, pageIndex: number): void => {
+    if (mode !== 'text' || !doc) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = clamp((e.clientX - rect.left) / rect.width)
+    const y = clamp((e.clientY - rect.top) / rect.height)
+    const id = 't_' + Math.random().toString(36).slice(2, 9)
+    setTexts((prev) => [...prev, { id, pageIndex, x, y, color: activeColor, text: '' }])
+    setEditingId(id)
+  }
+
+  const fontPx = Math.round(16 * scale * 1.05)
+  const pageCursor =
+    mode === 'highlight' ? 'crosshair' : mode === 'text' ? 'text' : 'default'
+
   return (
     <div className="flex-1 min-w-0 flex flex-col border border-black/10 rounded-lg bg-white overflow-hidden">
       {/* En-tete du panneau */}
@@ -219,11 +262,15 @@ function MirrorPane({
         >
           {doc ? 'Changer…' : 'Ouvrir un relevé…'}
         </button>
-        {highlights.length > 0 && (
+        {(highlights.length > 0 || texts.length > 0) && (
           <button
-            onClick={() => setHighlights([])}
+            onClick={() => {
+              setHighlights([])
+              setTexts([])
+              setEditingId(null)
+            }}
             className="px-2 py-1 text-[11px] rounded text-red-500 hover:bg-red-500/10 whitespace-nowrap"
-            title="Retirer tous les surlignages de ce relevé"
+            title="Retirer tous les surlignages et textes de ce relevé"
           >
             Tout effacer
           </button>
@@ -255,20 +302,27 @@ function MirrorPane({
             <div key={i} className="flex flex-col items-center gap-1 mb-4">
               <div
                 className="relative shadow-md"
-                style={{ width: 'fit-content', cursor: eraseMode ? 'default' : 'crosshair' }}
+                style={{ width: 'fit-content', cursor: pageCursor }}
                 onPointerDown={(e) => onPointerDown(e, i)}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
+                onClick={(e) => onPageClick(e, i)}
               >
                 <PdfPageCanvas doc={doc} pageNumber={i + 1} scale={scale} />
+
                 {/* surlignages de la page i */}
                 {highlights
                   .filter((h) => h.pageIndex === i)
                   .map((h) => (
                     <div
                       key={h.id}
-                      onClick={() => (eraseMode ? removeHighlight(h.id) : undefined)}
-                      title={eraseMode ? 'Cliquer pour retirer' : 'Surlignage'}
+                      onClick={(e) => {
+                        if (mode === 'erase') {
+                          e.stopPropagation()
+                          removeHighlight(h.id)
+                        }
+                      }}
+                      title={mode === 'erase' ? 'Cliquer pour retirer' : 'Surlignage'}
                       className="absolute"
                       style={{
                         left: `${h.x * 100}%`,
@@ -278,12 +332,79 @@ function MirrorPane({
                         backgroundColor: h.color,
                         opacity: 0.42,
                         mixBlendMode: 'multiply',
-                        cursor: eraseMode ? 'pointer' : 'default',
-                        pointerEvents: eraseMode ? 'auto' : 'none',
+                        cursor: mode === 'erase' ? 'pointer' : 'default',
+                        pointerEvents: mode === 'erase' ? 'auto' : 'none',
                         borderRadius: 2
                       }}
                     />
                   ))}
+
+                {/* notes texte de la page i */}
+                {texts
+                  .filter((t) => t.pageIndex === i)
+                  .map((t) =>
+                    editingId === t.id ? (
+                      <input
+                        key={t.id}
+                        autoFocus
+                        value={t.text}
+                        size={Math.max(4, t.text.length + 1)}
+                        onChange={(e) => updateText(t.id, e.target.value)}
+                        onBlur={() => commitText(t.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            commitText(t.id)
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault()
+                            removeText(t.id)
+                          }
+                        }}
+                        className="absolute bg-white/85 border border-pretto rounded px-1 outline-none"
+                        style={{
+                          left: `${t.x * 100}%`,
+                          top: `${t.y * 100}%`,
+                          color: t.color,
+                          fontSize: fontPx,
+                          fontWeight: 600,
+                          textShadow: '0 0 2px #fff, 0 0 2px #fff'
+                        }}
+                      />
+                    ) : (
+                      <span
+                        key={t.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (mode === 'erase') removeText(t.id)
+                          else if (mode === 'text') setEditingId(t.id)
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        title={
+                          mode === 'erase'
+                            ? 'Cliquer pour retirer'
+                            : mode === 'text'
+                              ? 'Cliquer pour modifier'
+                              : ''
+                        }
+                        className="absolute whitespace-nowrap select-none"
+                        style={{
+                          left: `${t.x * 100}%`,
+                          top: `${t.y * 100}%`,
+                          color: t.color,
+                          fontSize: fontPx,
+                          fontWeight: 600,
+                          textShadow: '0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff',
+                          cursor: mode === 'erase' || mode === 'text' ? 'pointer' : 'default',
+                          pointerEvents: mode === 'highlight' ? 'none' : 'auto'
+                        }}
+                      >
+                        {t.text}
+                      </span>
+                    )
+                  )}
+
                 {/* rectangle en cours de trace */}
                 {draft && draft.pageIndex === i && (
                   <div
@@ -319,7 +440,7 @@ interface Props {
 
 export default function MirrorCompare({ mainBytes, mainName, onClose }: Props): JSX.Element {
   const [activeColor, setActiveColor] = useState(PALETTE[0].c)
-  const [eraseMode, setEraseMode] = useState(false)
+  const [mode, setMode] = useState<Mode>('highlight')
   const [showTuto, setShowTuto] = useState(
     () => window.localStorage.getItem(TUTO_KEY) !== '1'
   )
@@ -328,6 +449,8 @@ export default function MirrorCompare({ mainBytes, mainName, onClose }: Props): 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
+        const active = document.activeElement?.tagName
+        if (active === 'INPUT' || active === 'TEXTAREA') return // laisse l'input gerer Echap
         if (showTuto) setShowTuto(false)
         else onClose()
       }
@@ -341,49 +464,52 @@ export default function MirrorCompare({ mainBytes, mainName, onClose }: Props): 
     setShowTuto(false)
   }
 
+  const modeBtn = (m: Mode, label: string, title: string): JSX.Element => (
+    <button
+      onClick={() => setMode(m)}
+      title={title}
+      className={[
+        'px-3 py-1.5 text-xs font-medium border-l first:border-l-0 border-black/10',
+        mode === m ? 'bg-pretto text-white' : 'text-ink hover:bg-black/5'
+      ].join(' ')}
+    >
+      {label}
+    </button>
+  )
+
   return (
     <div className="fixed inset-0 z-[900] bg-cream flex flex-col">
       {/* Barre du haut */}
       <div className="h-14 shrink-0 bg-white border-b border-black/10 flex items-center px-4 gap-3">
         <span className="text-base font-semibold text-pretto">⇄ Comptes miroir</span>
-        <span className="text-xs text-black/50 hidden md:inline">
-          Compare deux relevés côte à côte
-        </span>
 
         <div className="w-px h-7 bg-black/10 mx-1" />
 
-        {/* Palette de surlignage partagee */}
-        <span className="text-xs text-black/60">Surligneur :</span>
+        {/* Outils */}
+        <div className="flex rounded-md border border-black/15 overflow-hidden">
+          {modeBtn('highlight', '▭ Surligner', 'Glisse pour surligner une zone (forme)')}
+          {modeBtn('text', 'T Texte', 'Clique pour écrire du texte sur le relevé')}
+          {modeBtn('erase', '⌫ Gomme', 'Clique un surlignage ou un texte pour le retirer')}
+        </div>
+
+        <div className="w-px h-7 bg-black/10 mx-1" />
+
+        {/* Palette de couleur (surlignage + texte) */}
+        <span className="text-xs text-black/60">Couleur :</span>
         {PALETTE.map((p) => (
           <button
             key={p.c}
-            onClick={() => {
-              setActiveColor(p.c)
-              setEraseMode(false)
-            }}
+            onClick={() => setActiveColor(p.c)}
             title={p.label}
             className={[
               'w-7 h-7 rounded-full border transition-transform',
-              !eraseMode && activeColor === p.c
+              activeColor === p.c
                 ? 'border-ink ring-2 ring-pretto/40 scale-110'
                 : 'border-black/15 hover:scale-105'
             ].join(' ')}
             style={{ backgroundColor: p.c }}
           />
         ))}
-
-        <button
-          onClick={() => setEraseMode((v) => !v)}
-          className={[
-            'ml-2 px-3 py-1.5 rounded-md text-xs font-medium border',
-            eraseMode
-              ? 'bg-red-500 text-white border-red-500'
-              : 'text-ink border-black/15 hover:bg-black/5'
-          ].join(' ')}
-          title="Mode gomme : clique un surlignage pour le retirer"
-        >
-          {eraseMode ? '⌫ Mode gomme actif' : '⌫ Retirer un surlignage'}
-        </button>
 
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -409,14 +535,14 @@ export default function MirrorCompare({ mainBytes, mainName, onClose }: Props): 
           initialBytes={mainBytes}
           initialName={mainName}
           activeColor={activeColor}
-          eraseMode={eraseMode}
+          mode={mode}
         />
         <MirrorPane
           title="Relevé B"
           initialBytes={null}
           initialName={null}
           activeColor={activeColor}
-          eraseMode={eraseMode}
+          mode={mode}
         />
       </div>
 
@@ -443,20 +569,20 @@ export default function MirrorCompare({ mainBytes, mainName, onClose }: Props): 
                 défiler, −/+ pour zoomer).
               </li>
               <li>
-                Choisis une <strong>couleur de surligneur</strong> en haut, puis{' '}
-                <strong>glisse</strong> sur un montant. Surligne le virement sur A{' '}
-                <em>et le même montant sur B</em> avec la <strong>même couleur</strong> : la paire
-                miroir saute aux yeux.
+                <strong>▭ Surligner</strong> : choisis une couleur puis glisse sur un montant.
+                Surligne le virement sur A <em>et le même montant sur B</em> avec la{' '}
+                <strong>même couleur</strong> : la paire miroir saute aux yeux.
               </li>
               <li>
-                Pour corriger : « Retirer un surlignage » puis clique dessus, ou « Tout effacer »
-                dans un panneau.
+                <strong>T Texte</strong> : clique sur un relevé pour écrire une note (montant, nom,
+                rapprochement…). <strong>⌫ Gomme</strong> : clique un surlignage ou un texte pour le
+                retirer.
               </li>
             </ol>
             <p className="text-xs text-black/45 mb-5">
-              Les surlignages servent à la comparaison visuelle (ils ne sont pas enregistrés dans le
-              PDF). Pour des annotations définitives, utilise les outils Surligner / Texte sur le
-              document principal.
+              Surlignages et textes servent à la comparaison visuelle (ils ne sont pas enregistrés
+              dans le PDF). Pour des annotations définitives, utilise les outils du document
+              principal.
             </p>
             <div className="flex items-center justify-between">
               <button
