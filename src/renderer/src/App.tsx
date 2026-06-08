@@ -511,6 +511,13 @@ export default function App(): JSX.Element {
       const descenderH = hit.textHeight * 0.32 // 32% sous la baseline
       const padX = Math.max(0.0015, hit.textWidth * 0.02) // 2% horizontal min
 
+      // Pour les PDF générés depuis un navigateur (Chrome → "Imprimer en PDF" d'une
+      // page web avec titres en dégradé CSS, transformations, etc.), la baseline
+      // reportée par pdfjs peut être décalée par rapport au rendu visuel — alors
+      // que l'AABB (bounding box) correspond au rendu visuel (c'est pour ça que
+      // l'éditeur s'ouvre au bon endroit). En non-rotated, on ancre sur l'AABB.
+      const padYAabb = Math.max(0.001, hit.height * 0.1)
+
       const eraser: Annotation = isRotated
         ? {
             id: idEraser,
@@ -532,44 +539,66 @@ export default function App(): JSX.Element {
             id: idEraser,
             kind: 'eraser',
             pageIndex: pageIdx,
-            // Non-rotated : box couvre ascender + descender + padding horizontal.
+            // Non-rotated : on s'ancre sur l'AABB de pdfjs (zone visible).
             rect: {
-              x: Math.max(0, hit.baselineX - padX),
-              y: Math.max(0, hit.baselineY - hit.textHeight - ascExtra),
-              w: effectiveWidth + 2 * padX,
-              h: hit.textHeight + ascExtra + descenderH
+              x: Math.max(0, hit.x - padX),
+              y: Math.max(0, hit.y - padYAabb),
+              w: Math.max(hit.width, effectiveWidth) + 2 * padX,
+              h: hit.height + 2 * padYAabb
             },
             color: '#FFFFFF'
           }
 
       if (newText.trim() === '') {
         // Effacement pur — largeur d'origine (pas d'extension nouveau texte)
-        // mais on garde les marges verticales et padding horizontal.
-        const baseW = isRotated ? hit.textWidth + padX : hit.textWidth + 2 * padX
-        const eraserClean: Annotation =
-          eraser.kind === 'eraser'
-            ? { ...eraser, rect: { ...eraser.rect, w: baseW } }
-            : eraser
+        // mais on garde les marges et le padding horizontal.
+        let eraserClean: Annotation = eraser
+        if (eraser.kind === 'eraser') {
+          if (isRotated) {
+            eraserClean = { ...eraser, rect: { ...eraser.rect, w: hit.textWidth + padX } }
+          } else {
+            eraserClean = {
+              ...eraser,
+              rect: { ...eraser.rect, w: hit.width + 2 * padX }
+            }
+          }
+        }
         setAnnotations((prev) => [...prev, eraserClean])
         setDirty(true)
         return
       }
 
-      // Nouveau texte par-dessus, en baseline-mode (rotation = 0 active baseline)
-      const replacement: Annotation = {
-        id: idNew,
-        kind: 'text',
-        pageIndex: pageIdx,
-        x: hit.baselineX,
-        y: hit.baselineY,
-        text: newText,
-        size: hit.fontSize,
-        color: '#000000',
-        fontFamily: hit.fontFamily,
-        bold: hit.bold,
-        italic: hit.italic,
-        rotation: hit.rotation
-      }
+      // Nouveau texte par-dessus
+      // - Rotated : baseline-left + rotation (le seul mode possible pour rotation ≠ 0)
+      // - Non-rotated : top-left de l'AABB (correspond au rendu visuel, comme l'éditeur)
+      const replacement: Annotation = isRotated
+        ? {
+            id: idNew,
+            kind: 'text',
+            pageIndex: pageIdx,
+            x: hit.baselineX,
+            y: hit.baselineY,
+            text: newText,
+            size: hit.fontSize,
+            color: '#000000',
+            fontFamily: hit.fontFamily,
+            bold: hit.bold,
+            italic: hit.italic,
+            rotation: hit.rotation
+          }
+        : {
+            id: idNew,
+            kind: 'text',
+            pageIndex: pageIdx,
+            x: hit.x,
+            y: hit.y,
+            text: newText,
+            size: hit.fontSize,
+            color: '#000000',
+            fontFamily: hit.fontFamily,
+            bold: hit.bold,
+            italic: hit.italic
+          }
 
       setAnnotations((prev) => [...prev, eraser, replacement])
       setDirty(true)
