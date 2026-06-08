@@ -504,17 +504,26 @@ export default function App(): JSX.Element {
       const estimatedNewWidth = newText.length * avgCharW * 1.1
       const effectiveWidth = Math.max(hit.textWidth, estimatedNewWidth)
 
+      // pdfjs renvoie `textHeight` ≈ hauteur ascender uniquement (pas de descender).
+      // On étend généreusement pour couvrir les jambages (p, g, €, …) et un
+      // petit padding pour ne pas laisser de filet du texte original visible.
+      const ascExtra = hit.textHeight * 0.15 // 15% au-dessus de l'ascender
+      const descenderH = hit.textHeight * 0.32 // 32% sous la baseline
+      const padX = Math.max(0.0015, hit.textWidth * 0.02) // 2% horizontal min
+
       const eraser: Annotation = isRotated
         ? {
             id: idEraser,
             kind: 'eraser',
             pageIndex: pageIdx,
-            // Pivot = baseline-left, rect monte depuis le pivot par textHeight
+            // Pivot = baseline-left, rect monte depuis le pivot.
+            // On étend en hauteur (ascender + petite marge) ; on n'agrandit pas
+            // sous la baseline pour éviter de décaler le pivot de rotation.
             rect: {
               x: hit.baselineX,
               y: hit.baselineY,
-              w: effectiveWidth,
-              h: hit.textHeight
+              w: effectiveWidth + padX,
+              h: hit.textHeight + ascExtra
             },
             color: '#FFFFFF',
             rotation: hit.rotation
@@ -523,22 +532,23 @@ export default function App(): JSX.Element {
             id: idEraser,
             kind: 'eraser',
             pageIndex: pageIdx,
-            // Pour non-rotated : (rect.x, rect.y) = top-left du rect.
-            // top du rect = baselineY - textHeight (au-dessus de la baseline)
+            // Non-rotated : box couvre ascender + descender + padding horizontal.
             rect: {
-              x: hit.baselineX,
-              y: Math.max(0, hit.baselineY - hit.textHeight),
-              w: effectiveWidth,
-              h: hit.textHeight
+              x: Math.max(0, hit.baselineX - padX),
+              y: Math.max(0, hit.baselineY - hit.textHeight - ascExtra),
+              w: effectiveWidth + 2 * padX,
+              h: hit.textHeight + ascExtra + descenderH
             },
             color: '#FFFFFF'
           }
 
       if (newText.trim() === '') {
-        // Effacement pur — utilise l'ancienne largeur (pas besoin d'extension)
+        // Effacement pur — largeur d'origine (pas d'extension nouveau texte)
+        // mais on garde les marges verticales et padding horizontal.
+        const baseW = isRotated ? hit.textWidth + padX : hit.textWidth + 2 * padX
         const eraserClean: Annotation =
           eraser.kind === 'eraser'
-            ? { ...eraser, rect: { ...eraser.rect, w: hit.textWidth } }
+            ? { ...eraser, rect: { ...eraser.rect, w: baseW } }
             : eraser
         setAnnotations((prev) => [...prev, eraserClean])
         setDirty(true)

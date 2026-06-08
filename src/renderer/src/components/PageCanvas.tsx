@@ -1354,6 +1354,7 @@ function DraggableEraserAnnotation({
     startY: number
     base: { x: number; y: number; w: number; h: number }
   } | null>(null)
+  const [hovered, setHovered] = useState(false)
 
   function startDrag(mode: 'move' | 'resize') {
     return (e: React.MouseEvent) => {
@@ -1421,12 +1422,19 @@ function DraggableEraserAnnotation({
         backgroundColor: a.color || '#FFFFFF',
         zIndex: isSelected ? 12 : 9,
         cursor: 'move',
+        // Bord invisible par defaut : la zone effacée se confond avec le fond
+        // pour ressembler à une vraie suppression. Le bord apparaît au survol
+        // pour pouvoir la repositionner / supprimer / redimensionner.
         border: isSelected
           ? '2px solid #0C806E'
-          : '1px dashed rgba(12,128,110,0.6)',
+          : hovered
+            ? '1px dashed rgba(12,128,110,0.6)'
+            : '1px solid transparent',
         borderRadius: 1,
         ...rotatedStyle
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onMouseDown={startDrag('move')}
       onContextMenu={(e) => {
         e.preventDefault()
