@@ -40,11 +40,21 @@ interface Props {
   onOpenMirror: () => void
   onCloseMirror: () => void
   mirrorActive: boolean
+  lastSavedAt: number | null
 }
 
 function shortName(path: string | null): string {
   if (!path) return 'Aucun document'
   return path.split('/').pop() || path
+}
+
+/** Pour les chemins longs : "Users › q › Documents › … › facture.pdf" */
+function midEllipsisPath(path: string | null, max = 70): string {
+  if (!path) return ''
+  if (path.length <= max) return path
+  const head = path.slice(0, Math.floor(max / 2) - 2)
+  const tail = path.slice(-Math.floor(max / 2) + 2)
+  return `${head}…${tail}`
 }
 
 const HIGHLIGHT_COLORS = ['#FFF200', '#A6E22E', '#FF7AC6', '#5AC8FA', '#FF9500']
@@ -65,10 +75,24 @@ export default function Toolbar(p: Props): JSX.Element {
         <button onClick={p.onOpen} className={primary} disabled={p.busy}>
           Ouvrir
         </button>
-        <button onClick={p.onSave} className={can(p.hasDoc)} disabled={!p.hasDoc || p.busy}>
-          Enregistrer
+        <button
+          onClick={p.onSave}
+          className={can(p.hasDoc)}
+          disabled={!p.hasDoc || p.busy}
+          title={
+            p.filePath
+              ? `Enregistrer en remplacement du fichier original :\n${p.filePath}`
+              : 'Enregistrer le PDF (choisira un emplacement)'
+          }
+        >
+          Enregistrer{p.filePath ? ' (remplace l’original)' : '…'}
         </button>
-        <button onClick={p.onSaveAs} className={can(p.hasDoc)} disabled={!p.hasDoc || p.busy}>
+        <button
+          onClick={p.onSaveAs}
+          className={can(p.hasDoc)}
+          disabled={!p.hasDoc || p.busy}
+          title="Enregistrer une COPIE dans un nouveau fichier (l'original n'est pas modifié)"
+        >
           Enregistrer sous…
         </button>
 
@@ -348,10 +372,29 @@ export default function Toolbar(p: Props): JSX.Element {
       )}
 
       {/* Statut document */}
-      <div className="h-7 flex items-center px-3 gap-2 text-xs text-black/50 border-t border-black/5 bg-white">
+      <div className="h-7 flex items-center px-3 gap-3 text-xs text-black/55 border-t border-black/5 bg-white">
         {p.busy && <span className="text-pretto">Traitement…</span>}
-        {p.dirty && <span className="text-olive">●&nbsp;Modifications non enregistrées</span>}
-        <span className="ml-auto font-medium text-black/70">{shortName(p.filePath)}</span>
+        {p.dirty && !p.lastSavedAt && (
+          <span className="text-olive">●&nbsp;Modifications non enregistrées</span>
+        )}
+        {p.lastSavedAt && p.filePath && (
+          <span className="text-pretto font-semibold">
+            ✓ Enregistré dans : {p.filePath}
+          </span>
+        )}
+        <span
+          className="ml-auto max-w-[60vw] truncate"
+          title={p.filePath || 'Aucun fichier ouvert'}
+        >
+          {p.filePath ? (
+            <>
+              <span className="text-black/45">Fichier : </span>
+              <span className="font-medium text-black/75">{midEllipsisPath(p.filePath)}</span>
+            </>
+          ) : (
+            <span className="text-black/45">Aucun fichier ouvert</span>
+          )}
+        </span>
       </div>
     </header>
   )

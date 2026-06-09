@@ -24,11 +24,29 @@ function findPdfInArgv(): string | null {
   return null
 }
 
+function bringWindowToFront(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (!mainWindow.isVisible()) mainWindow.show()
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  if (process.platform === 'darwin') {
+    // Mac : besoin de app.focus pour ramener l'app au premier plan
+    // (depuis Finder → "Ouvrir avec…" alors qu'on est en arriere-plan)
+    app.focus({ steal: true })
+    mainWindow.focus()
+  } else if (process.platform === 'win32') {
+    // Windows : contourne le focus-stealing prevention de Windows
+    mainWindow.setAlwaysOnTop(true)
+    mainWindow.focus()
+    mainWindow.setAlwaysOnTop(false)
+  } else {
+    mainWindow.focus()
+  }
+}
+
 function sendOpenFile(path: string): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('app:openFile', path)
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.focus()
+    bringWindowToFront()
   } else {
     pendingFilePath = path
   }
@@ -220,18 +238,18 @@ if (!gotLock) {
 } else {
   app.on('second-instance', (_event, argv) => {
     // Cherche un .pdf dans les args de la 2e instance
+    let foundPdf = false
     for (let i = 1; i < argv.length; i++) {
       const arg = argv[i]
       if (arg && arg.toLowerCase().endsWith('.pdf') && existsSync(arg)) {
         sendOpenFile(arg)
+        foundPdf = true
         break
       }
     }
-    // Bring window to front
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
+    // sendOpenFile() ramene deja la fenetre au premier plan. Si pas de PDF,
+    // on la ramene quand meme (user a clique sur l'app pendant qu'elle tournait).
+    if (!foundPdf) bringWindowToFront()
   })
 }
 

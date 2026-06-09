@@ -20,6 +20,7 @@ import type { TextHit } from './lib/textEdit'
 
 export default function App(): JSX.Element {
   const [filePath, setFilePath] = useState<string | null>(null)
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null)
   const [pages, setPages] = useState<PageEntry[]>([])
   const [currentPage, setCurrentPage] = useState(0)
@@ -166,7 +167,8 @@ export default function App(): JSX.Element {
             ? await window.api.imageToPdfBytes(first)
             : await window.api.readPdf(first)
           // Charge le 1er
-          await loadFromBytes(firstBytes, first.split('/').pop() || 'document.pdf')
+          // Garde le chemin complet : permet "Enregistrer" (remplace l'original)
+          await loadFromBytes(firstBytes, first)
 
           // Ajoute les autres a la suite si plusieurs
           if (paths.length > 1) {
@@ -248,6 +250,7 @@ export default function App(): JSX.Element {
     setAnnotations([])
     setFormFields([])
     setPdfBytes(final)
+    setLastSavedAt(Date.now())
   }, [pdfBytes, filePath, buildFinalPdf])
 
   const saveAs = useCallback(async () => {
@@ -262,7 +265,15 @@ export default function App(): JSX.Element {
     setAnnotations([])
     setFormFields([])
     setPdfBytes(final)
+    setLastSavedAt(Date.now())
   }, [pdfBytes, filePath, buildFinalPdf])
+
+  // Confirmation "Enregistré dans X" : s'efface auto apres 8s
+  useEffect(() => {
+    if (lastSavedAt === null) return
+    const t = setTimeout(() => setLastSavedAt(null), 8000)
+    return () => clearTimeout(t)
+  }, [lastSavedAt])
 
   const addAnnotation = useCallback((a: Annotation) => {
     setAnnotations((prev) => [...prev, a])
@@ -852,6 +863,7 @@ export default function App(): JSX.Element {
         onOpenMirror={openMirror}
         onCloseMirror={closeMirror}
         mirrorActive={mirrorOpen}
+        lastSavedAt={lastSavedAt}
       />
       <div className="flex flex-1 min-h-0">
         <Sidebar active={tool} onChange={setTool} hasDoc={!!pdfBytes} />
