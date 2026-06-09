@@ -6,6 +6,7 @@ export interface Api {
   savePdf: (defaultName?: string) => Promise<string | null>
   readPdf: (filePath: string) => Promise<ArrayBuffer>
   writePdf: (filePath: string, data: ArrayBuffer) => Promise<boolean>
+  showInFolder: (filePath: string) => Promise<boolean>
   imageToPdfBytes: (imagePath: string) => Promise<ArrayBuffer>
   getPathForFile: (file: File) => string
   onFileOpenRequest: (callback: (path: string) => void) => () => void

@@ -12,6 +12,8 @@ const api = {
     ipcRenderer.invoke('fs:readPdf', filePath),
   writePdf: (filePath: string, data: ArrayBuffer): Promise<boolean> =>
     ipcRenderer.invoke('fs:writePdf', filePath, data),
+  showInFolder: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke('shell:showInFolder', filePath),
   imageToPdfBytes: (imagePath: string): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('pdf:imageToPdfBytes', imagePath),
 

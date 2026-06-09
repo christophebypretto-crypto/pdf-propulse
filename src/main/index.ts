@@ -305,6 +305,14 @@ app.whenReady().then(() => {
     return true
   })
 
+  // Ouvre le Finder (Mac) / Explorateur (Windows) sur le dossier parent
+  // avec le fichier sélectionné.
+  ipcMain.handle('shell:showInFolder', async (_evt, filePath: string) => {
+    if (!filePath || !existsSync(filePath)) return false
+    shell.showItemInFolder(filePath)
+    return true
+  })
+
   registerPdfHandlers()
   buildAppMenu()
 

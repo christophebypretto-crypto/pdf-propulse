@@ -378,23 +378,26 @@ export default function Toolbar(p: Props): JSX.Element {
           <span className="text-olive">●&nbsp;Modifications non enregistrées</span>
         )}
         {p.lastSavedAt && p.filePath && (
-          <span className="text-pretto font-semibold">
-            ✓ Enregistré dans : {p.filePath}
-          </span>
+          <button
+            onClick={() => window.api.showInFolder(p.filePath!)}
+            className="text-pretto font-semibold hover:underline cursor-pointer"
+            title="Ouvrir le dossier dans le Finder / Explorateur"
+          >
+            ✓ Enregistré dans : {p.filePath} — clic pour ouvrir le dossier
+          </button>
         )}
-        <span
-          className="ml-auto max-w-[60vw] truncate"
-          title={p.filePath || 'Aucun fichier ouvert'}
-        >
-          {p.filePath ? (
-            <>
-              <span className="text-black/45">Fichier : </span>
-              <span className="font-medium text-black/75">{midEllipsisPath(p.filePath)}</span>
-            </>
-          ) : (
-            <span className="text-black/45">Aucun fichier ouvert</span>
-          )}
-        </span>
+        {p.filePath ? (
+          <button
+            onClick={() => window.api.showInFolder(p.filePath!)}
+            className="ml-auto max-w-[60vw] truncate text-left hover:underline cursor-pointer"
+            title={`Clic pour ouvrir le dossier dans le Finder / Explorateur :\n${p.filePath}`}
+          >
+            <span className="text-black/45">Fichier : </span>
+            <span className="font-medium text-black/75">{midEllipsisPath(p.filePath)}</span>
+          </button>
+        ) : (
+          <span className="ml-auto text-black/45">Aucun fichier ouvert</span>
+        )}
       </div>
     </header>
   )
