@@ -25,7 +25,9 @@ export default function App(): JSX.Element {
   const [pages, setPages] = useState<PageEntry[]>([])
   const [currentPage, setCurrentPage] = useState(0)
   const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [tool, setTool] = useState<Tool>('pages')
+  // Tool initial = vue page (surlignage) → quand on ouvre un PDF on tombe
+  // directement sur la 1re page, pas sur la grille de reorganisation.
+  const [tool, setTool] = useState<Tool>('annotate-highlight')
   const [scale, setScale] = useState(1.2)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [formFields, setFormFields] = useState<FormField[]>([])
@@ -66,6 +68,8 @@ export default function App(): JSX.Element {
       setAnnotations([])
       setFormFields([])
       setDirty(false)
+      // A chaque ouverture : direct sur la 1re page (et pas la grille "Pages")
+      setTool((t) => (t === 'pages' ? 'annotate-highlight' : t))
     } finally {
       setBusy(false)
     }
@@ -83,7 +87,13 @@ export default function App(): JSX.Element {
         setAnnotations([])
         setFormFields([])
         setDirty(true)
-        if (newName) setFilePath(newName)
+        if (newName) {
+          // newName n'est passe que pour un nouveau document (drag-drop, fusion…)
+          // → on bascule sur la 1re page. Pour les operations de reorganisation
+          // (rotate/delete/reorder), newName est absent et on reste en mode Pages.
+          setFilePath(newName)
+          setTool((t) => (t === 'pages' ? 'annotate-highlight' : t))
+        }
       } finally {
         setBusy(false)
       }

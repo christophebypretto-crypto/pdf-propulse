@@ -25,22 +25,32 @@ function findPdfInArgv(): string | null {
 }
 
 function bringWindowToFront(): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return
-  if (!mainWindow.isVisible()) mainWindow.show()
-  if (mainWindow.isMinimized()) mainWindow.restore()
-  if (process.platform === 'darwin') {
-    // Mac : besoin de app.focus pour ramener l'app au premier plan
-    // (depuis Finder → "Ouvrir avec…" alors qu'on est en arriere-plan)
-    app.focus({ steal: true })
-    mainWindow.focus()
-  } else if (process.platform === 'win32') {
-    // Windows : contourne le focus-stealing prevention de Windows
-    mainWindow.setAlwaysOnTop(true)
-    mainWindow.focus()
-    mainWindow.setAlwaysOnTop(false)
-  } else {
-    mainWindow.focus()
+  const doFocus = (): void => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (!mainWindow.isVisible()) mainWindow.show()
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    if (process.platform === 'darwin') {
+      // Mac : app.focus pour passer devant les autres apps, puis window.focus + moveTop
+      app.focus({ steal: true })
+      mainWindow.moveTop()
+      mainWindow.focus()
+    } else if (process.platform === 'win32') {
+      // Windows : contourne le focus-stealing prevention
+      mainWindow.setAlwaysOnTop(true)
+      mainWindow.focus()
+      mainWindow.setAlwaysOnTop(false)
+      mainWindow.moveTop()
+    } else {
+      mainWindow.focus()
+      mainWindow.moveTop()
+    }
   }
+  // Premier appel immediat, second appel apres 120ms pour gerer le timing
+  // de l'event open-file qui peut arriver avant que la fenetre soit prete a
+  // recevoir le focus (cas typique : "Ouvrir avec" depuis le Finder pendant
+  // que l'app est en arriere-plan dans un autre Space).
+  doFocus()
+  setTimeout(doFocus, 120)
 }
 
 function sendOpenFile(path: string): void {
