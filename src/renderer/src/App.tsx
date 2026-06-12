@@ -856,6 +856,8 @@ export default function App(): JSX.Element {
         onMerge={() => setDialog('merge')}
         onSplit={() => setDialog('split')}
         onExtract={() => setDialog('extract')}
+        onOrganize={() => setTool((t) => (t === 'pages' ? 'annotate-highlight' : 'pages'))}
+        organizeActive={tool === 'pages'}
         onZoom={onZoom}
         onSetHighlightColor={setHighlightColor}
         onSetHighlightOpacity={setHighlightOpacity}

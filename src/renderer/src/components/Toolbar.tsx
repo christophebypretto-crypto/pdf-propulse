@@ -23,6 +23,8 @@ interface Props {
   onMerge: () => void
   onSplit: () => void
   onExtract: () => void
+  onOrganize: () => void
+  organizeActive: boolean
   onZoom: (delta: number | 'fit') => void
   onSetHighlightColor: (c: string) => void
   onSetHighlightOpacity: (n: number) => void
@@ -106,6 +108,21 @@ export default function Toolbar(p: Props): JSX.Element {
         </button>
         <button onClick={p.onExtract} className={can(p.hasDoc)} disabled={!p.hasDoc || p.busy}>
           Extraire
+        </button>
+        <button
+          onClick={p.onOrganize}
+          disabled={!p.hasDoc || p.busy}
+          className={[
+            cls,
+            !p.hasDoc
+              ? 'text-black/30 cursor-not-allowed'
+              : p.organizeActive
+                ? 'bg-pretto text-white hover:bg-pretto/90'
+                : 'text-ink hover:bg-black/5'
+          ].join(' ')}
+          title="Vue grille des pages : réorganiser, pivoter, supprimer, insérer"
+        >
+          ▦ {p.organizeActive ? 'Quitter Organiser' : 'Organiser'}
         </button>
 
         <div className="w-px h-6 bg-black/10 mx-1" />

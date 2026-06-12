@@ -18,8 +18,9 @@ interface ToolDef {
   disabled?: boolean
 }
 
+// "Organiser" (vue grille des pages) est maintenant dans la Toolbar en haut,
+// à côté de Fusionner / Diviser / Extraire.
 const TOOLS: ToolDef[] = [
-  { id: 'pages', label: 'Pages', icon: '▦', hint: 'Naviguer dans les pages' },
   { id: 'annotate-highlight', label: 'Surligner', icon: '▭', hint: 'Glisser pour surligner' },
   { id: 'annotate-pen', label: 'Crayon', icon: '✎', hint: 'Dessiner à main levée' },
   { id: 'annotate-text', label: 'Texte', icon: 'T', hint: 'Clique pour ajouter du texte' },
