@@ -52,7 +52,9 @@ html, body, #root {
   text-size-adjust: none;
   forced-color-adjust: none;
   transform-origin: 0% 0%;
-  z-index: 6;
+  /* Juste au-dessus du canvas (0), sous les masques (9) et le texte (10/14).
+     Evite les collisions a z=6 avec form-fields / overlays modify-text. */
+  z-index: 3;
   pointer-events: none;
   caret-color: transparent;
   user-select: none;

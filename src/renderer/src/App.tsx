@@ -511,117 +511,107 @@ export default function App(): JSX.Element {
   }, [])
 
   const handleCommitModifyText = useCallback(
-    (pageIdx: number, hit: TextHit, newText: string) => {
+    (
+      pageIdx: number,
+      hit: TextHit,
+      newText: string,
+      colors?: { background: string; text: string }
+    ) => {
       const isRotated = Math.abs(hit.rotation) > 0.5
       const idEraser = 'a_' + Math.random().toString(36).slice(2, 9)
       const idNew = 'a_' + Math.random().toString(36).slice(2, 9)
 
-      // Estime la largeur du nouveau texte pour étendre l'eraser si nécessaire.
-      // On utilise la largeur moyenne par caractère du texte original (mesurée
-      // par pdfjs) puis on extrapole sur le nombre de caractères du nouveau texte.
-      // +10% de marge de sécurité pour les caractères larges (W, M, etc.).
+      // Couleurs reelles echantillonnees sur l'original (fond + texte). Fallback
+      // blanc/noir si l'echantillonnage a echoue.
+      const bgColor = colors?.background ?? '#FFFFFF'
+      const textColor = colors?.text ?? '#000000'
+
+      // Largeur du nouveau texte estimee depuis la largeur moyenne/caractere de
+      // l'original, +20% de marge (caracteres larges W, M…).
       const origLen = Math.max(1, hit.text.length)
       const avgCharW = hit.textWidth / origLen
-      const estimatedNewWidth = newText.length * avgCharW * 1.1
+      const estimatedNewWidth = newText.length * avgCharW * 1.2
       const effectiveWidth = Math.max(hit.textWidth, estimatedNewWidth)
 
-      // pdfjs renvoie `textHeight` ≈ hauteur ascender uniquement (pas de descender).
-      // On étend généreusement pour couvrir les jambages (p, g, €, …) et un
-      // petit padding pour ne pas laisser de filet du texte original visible.
-      const ascExtra = hit.textHeight * 0.15 // 15% au-dessus de l'ascender
-      const descenderH = hit.textHeight * 0.32 // 32% sous la baseline
-      const padX = Math.max(0.0015, hit.textWidth * 0.02) // 2% horizontal min
+      // pdfjs renvoie `textHeight`/`height` ≈ hauteur ascender (de la baseline au haut),
+      // SANS les jambages. On etend le masque vers le haut (ascExtra) et surtout vers
+      // le bas (descExtra) pour couvrir g/p/q/j/y/€ du nouveau texte ET de l'ancien.
+      const ascExtra = hit.textHeight * 0.18
+      const descExtra = hit.textHeight * 0.32
+      const padX = Math.max(0.0015, hit.textWidth * 0.02)
+      const padY = Math.max(0.001, hit.height * 0.1)
 
-      // Pour les PDF générés depuis un navigateur (Chrome → "Imprimer en PDF" d'une
-      // page web avec titres en dégradé CSS, transformations, etc.), la baseline
-      // reportée par pdfjs peut être décalée par rapport au rendu visuel — alors
-      // que l'AABB (bounding box) correspond au rendu visuel (c'est pour ça que
-      // l'éditeur s'ouvre au bon endroit). En non-rotated, on ancre sur l'AABB.
-      const padYAabb = Math.max(0.001, hit.height * 0.1)
-
-      const eraser: Annotation = isRotated
-        ? {
-            id: idEraser,
-            kind: 'eraser',
-            pageIndex: pageIdx,
-            // Pivot = baseline-left, rect monte depuis le pivot.
-            // On étend en hauteur (ascender + petite marge) ; on n'agrandit pas
-            // sous la baseline pour éviter de décaler le pivot de rotation.
-            rect: {
-              x: hit.baselineX,
-              y: hit.baselineY,
-              w: effectiveWidth + padX,
-              h: hit.textHeight + ascExtra
-            },
-            color: '#FFFFFF',
-            rotation: hit.rotation
-          }
-        : {
-            id: idEraser,
-            kind: 'eraser',
-            pageIndex: pageIdx,
-            // Non-rotated : on s'ancre sur l'AABB de pdfjs (zone visible).
-            rect: {
-              x: Math.max(0, hit.x - padX),
-              y: Math.max(0, hit.y - padYAabb),
-              w: Math.max(hit.width, effectiveWidth) + 2 * padX,
-              h: hit.height + 2 * padYAabb
-            },
-            color: '#FFFFFF'
-          }
-
+      // Effacement pur (texte vidé) → masque couleur-fond seul, pas de texte.
       if (newText.trim() === '') {
-        // Effacement pur — largeur d'origine (pas d'extension nouveau texte)
-        // mais on garde les marges et le padding horizontal.
-        let eraserClean: Annotation = eraser
-        if (eraser.kind === 'eraser') {
-          if (isRotated) {
-            eraserClean = { ...eraser, rect: { ...eraser.rect, w: hit.textWidth + padX } }
-          } else {
-            eraserClean = {
-              ...eraser,
-              rect: { ...eraser.rect, w: hit.width + 2 * padX }
+        const eraser: Annotation = isRotated
+          ? {
+              id: idEraser,
+              kind: 'eraser',
+              pageIndex: pageIdx,
+              rect: {
+                x: hit.baselineX,
+                y: hit.baselineY,
+                w: hit.textWidth + padX,
+                h: hit.textHeight + ascExtra
+              },
+              color: bgColor,
+              rotation: hit.rotation
             }
-          }
-        }
-        setAnnotations((prev) => [...prev, eraserClean])
+          : {
+              id: idEraser,
+              kind: 'eraser',
+              pageIndex: pageIdx,
+              rect: {
+                x: Math.max(0, hit.x - padX),
+                y: Math.max(0, hit.y - padY),
+                w: hit.width + 2 * padX,
+                h: hit.height + 2 * padY + descExtra
+              },
+              color: bgColor
+            }
+        setAnnotations((prev) => [...prev, eraser])
         setDirty(true)
         return
       }
 
-      // Nouveau texte par-dessus
-      // - Rotated : baseline-left + rotation (le seul mode possible pour rotation ≠ 0)
-      // - Non-rotated : top-left de l'AABB (correspond au rendu visuel, comme l'éditeur)
-      const replacement: Annotation = isRotated
+      // Remplacement : UNE seule annotation `text` avec fond opaque intégré (masque +
+      // texte solidaires, aucun problème de z-index, aucune annotation ne peut
+      // s'intercaler). Texte toujours ancré sur la BASELINE d'origine (rotation 0
+      // pour l'horizontal) → position verticale exacte dans le PDF.
+      // - horizontal : backgroundRect en convention top-left (couvre ascender +
+      //   descender) ; le PDF/preview dessinent le fond en top-left (rotation 0).
+      // - rotaté : backgroundRect en convention pivot (baseline-left), monte vers le haut.
+      const backgroundRect = isRotated
         ? {
-            id: idNew,
-            kind: 'text',
-            pageIndex: pageIdx,
             x: hit.baselineX,
             y: hit.baselineY,
-            text: newText,
-            size: hit.fontSize,
-            color: '#000000',
-            fontFamily: hit.fontFamily,
-            bold: hit.bold,
-            italic: hit.italic,
-            rotation: hit.rotation
+            w: effectiveWidth + padX,
+            h: hit.textHeight + ascExtra + descExtra
           }
         : {
-            id: idNew,
-            kind: 'text',
-            pageIndex: pageIdx,
-            x: hit.x,
-            y: hit.y,
-            text: newText,
-            size: hit.fontSize,
-            color: '#000000',
-            fontFamily: hit.fontFamily,
-            bold: hit.bold,
-            italic: hit.italic
+            x: Math.max(0, hit.x - padX),
+            y: Math.max(0, hit.y - padY),
+            w: Math.max(hit.width, effectiveWidth) + 2 * padX,
+            h: hit.height + 2 * padY + descExtra
           }
 
-      setAnnotations((prev) => [...prev, eraser, replacement])
+      const replacement: Annotation = {
+        id: idNew,
+        kind: 'text',
+        pageIndex: pageIdx,
+        x: hit.baselineX,
+        y: hit.baselineY,
+        text: newText,
+        size: hit.fontSize,
+        color: textColor,
+        fontFamily: hit.fontFamily,
+        bold: hit.bold,
+        italic: hit.italic,
+        rotation: isRotated ? hit.rotation : 0,
+        background: bgColor,
+        backgroundRect
+      }
+      setAnnotations((prev) => [...prev, replacement])
       setDirty(true)
     },
     []

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import {
   Annotation,
@@ -12,6 +12,7 @@ import { FormField, newFieldId } from '../lib/forms'
 import { Tool } from './Sidebar'
 import AnnotationContextMenu, { AnnotationAction } from './AnnotationContextMenu'
 import { findTextAtPoint, fontFamilyToCss, getAllTextItems, TextHit } from '../lib/textEdit'
+import { sampleTextColors } from '../lib/colorSample'
 
 // Le type TextLayer n'est pas exporte dans les declarations TS de pdfjs-dist 4.x
 // mais existe à runtime ; on l'aliasse en type minimal
@@ -35,7 +36,12 @@ interface Props {
   onCutAnnotation: (id: string) => void
   onPasteAnnotation: () => void
   canPasteAnnotation: boolean
-  onCommitModifyText: (pageIndex: number, hit: TextHit, newText: string) => void
+  onCommitModifyText: (
+    pageIndex: number,
+    hit: TextHit,
+    newText: string,
+    colors?: { background: string; text: string }
+  ) => void
   onRotateAnnotation: (id: string, deltaDeg: number) => void
   formFields: FormField[]
   onAddFormField: (f: FormField) => void
@@ -114,13 +120,21 @@ export default function PageCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const textLayerRef = useRef<HTMLDivElement>(null)
+  // true uniquement quand le canvas contient un rendu pdf.js termine (pas pendant
+  // un re-render ou le bitmap est transitoirement vide) → garde l'echantillonnage
+  // couleur contre la lecture d'un canvas transparent (pave noir).
+  const renderedRef = useRef(false)
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
     annotationId: string
   } | null>(null)
-  const [modifyEditor, setModifyEditor] = useState<{ hit: TextHit; draft: string } | null>(null)
+  const [modifyEditor, setModifyEditor] = useState<{
+    hit: TextHit
+    draft: string
+    colors?: { background: string; text: string }
+  } | null>(null)
   const [allTextItems, setAllTextItems] = useState<TextHit[]>([])
 
   // En mode modify-text, charge tous les items texte de la page pour les rendre cliquables
@@ -165,6 +179,8 @@ export default function PageCanvas({
   useEffect(() => {
     if (!pdfDoc) return
     let cancelled = false
+    let renderTask: { cancel: () => void } | null = null
+    renderedRef.current = false // canvas en cours de (re)rendu : pas d'echantillon
     ;(async () => {
       const page = await pdfDoc.getPage(pageIndex + 1)
       if (cancelled) return
@@ -180,12 +196,19 @@ export default function PageCanvas({
       canvas.style.height = `${Math.floor(viewport.height)}px`
       const ctx = canvas.getContext('2d')!
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-      await page.render({
+      const task = page.render({
         canvasContext: ctx,
         viewport,
         transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined
-      }).promise
+      })
+      renderTask = task
+      try {
+        await task.promise
+      } catch {
+        return // rendu annule (changement de scale/page) : on sort proprement
+      }
       if (cancelled) return
+      renderedRef.current = true // canvas pret : echantillonnage couleur autorise
       setPageSize({ w: viewport.width, h: viewport.height })
 
       // Render text layer (texte transparent selectable)
@@ -217,6 +240,12 @@ export default function PageCanvas({
     })()
     return () => {
       cancelled = true
+      renderedRef.current = false
+      try {
+        renderTask?.cancel()
+      } catch {
+        /* ignore */
+      }
     }
   }, [pdfDoc, pageIndex, scale])
 
@@ -309,6 +338,24 @@ export default function PageCanvas({
     }
   }
 
+  // Ouvre l'editeur "Modifier" en echantillonnant la couleur reelle du fond et du
+  // texte sous le hit (rendu pdf.js deja termine au moment du clic).
+  function openModifyEditor(hit: TextHit): void {
+    let colors: { background: string; text: string } | undefined
+    const canvas = canvasRef.current
+    // N'echantillonne QUE si le canvas contient un rendu termine (sinon on lirait
+    // un bitmap transparent → pave noir). Sinon fallback blanc/noir propre.
+    if (canvas && renderedRef.current) {
+      colors = sampleTextColors(canvas, {
+        x: hit.x,
+        y: hit.y,
+        w: hit.width,
+        h: hit.height
+      })
+    }
+    setModifyEditor({ hit, draft: hit.text, colors })
+  }
+
   function onMouseDown(e: React.MouseEvent) {
     if (!isCurrent) onClick()
     if (ocrZoneActive) {
@@ -334,7 +381,7 @@ export default function PageCanvas({
       const p = toNorm(e)
       // Trouve le texte sous le clic — fire-and-forget (onMouseDown ne peut pas etre async)
       findTextAtPoint(pdfDoc, pageIndex, p.x, p.y).then((hit) => {
-        if (hit) setModifyEditor({ hit, draft: hit.text })
+        if (hit) openModifyEditor(hit)
       })
     } else if (tool === 'sign' && signatureDataUrl) {
       const p = toNorm(e)
@@ -591,19 +638,32 @@ export default function PageCanvas({
           }
           if (a.kind === 'text') {
             return (
-              <DraggableTextAnnotation
-                key={a.id}
-                a={a}
-                pageW={pageSize.w}
-                pageH={pageSize.h}
-                scale={scale}
-                isSelected={selectedAnnotationId === a.id}
-                onSelect={() => onSelectAnnotation(a.id)}
-                onUpdate={onUpdateAnnotation}
-                onRemove={onRemoveAnnotation}
-                onDuplicate={onDuplicateAnnotation}
-                onContextMenu={openAnnotationMenu}
-              />
+              <Fragment key={a.id}>
+                {/* Masque opaque integre (outil Modifier) : rendu en sibling, en
+                    coords page, TOUJOURS sous le texte (z 9 < texte 10/14). Mask et
+                    texte derivent de la meme annotation et bougent ensemble (drag). */}
+                {a.background && a.backgroundRect && (
+                  <TextMaskRect
+                    rect={a.backgroundRect}
+                    rotation={a.rotation}
+                    color={a.background}
+                    pageW={pageSize.w}
+                    pageH={pageSize.h}
+                  />
+                )}
+                <DraggableTextAnnotation
+                  a={a}
+                  pageW={pageSize.w}
+                  pageH={pageSize.h}
+                  scale={scale}
+                  isSelected={selectedAnnotationId === a.id}
+                  onSelect={() => onSelectAnnotation(a.id)}
+                  onUpdate={onUpdateAnnotation}
+                  onRemove={onRemoveAnnotation}
+                  onDuplicate={onDuplicateAnnotation}
+                  onContextMenu={openAnnotationMenu}
+                />
+              </Fragment>
             )
           }
           if (a.kind === 'image') {
@@ -681,7 +741,7 @@ export default function PageCanvas({
               onMouseDown={(e) => {
                 e.stopPropagation()
                 e.preventDefault()
-                setModifyEditor({ hit: item, draft: item.text })
+                openModifyEditor(item)
               }}
               title={`Cliquer pour modifier : "${item.text.substring(0, 50)}${
                 item.text.length > 50 ? '…' : ''
@@ -806,7 +866,12 @@ export default function PageCanvas({
             }
             onBlur={() => {
               if (modifyEditor.draft !== modifyEditor.hit.text) {
-                onCommitModifyText(pageIndex, modifyEditor.hit, modifyEditor.draft)
+                onCommitModifyText(
+                  pageIndex,
+                  modifyEditor.hit,
+                  modifyEditor.draft,
+                  modifyEditor.colors
+                )
               }
               setModifyEditor(null)
             }}
@@ -817,19 +882,26 @@ export default function PageCanvas({
               } else if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 if (modifyEditor.draft !== modifyEditor.hit.text) {
-                  onCommitModifyText(pageIndex, modifyEditor.hit, modifyEditor.draft)
+                  onCommitModifyText(
+                    pageIndex,
+                    modifyEditor.hit,
+                    modifyEditor.draft,
+                    modifyEditor.colors
+                  )
                 }
                 setModifyEditor(null)
               }
               // Shift+Enter = nouvelle ligne (comportement default)
             }}
-            className="border-2 border-pretto rounded-sm outline-none bg-white shadow-lg resize-none whitespace-nowrap"
+            className="border-2 border-pretto rounded-sm outline-none shadow-lg resize-none whitespace-nowrap"
             style={{
               fontFamily: fontFamilyToCss(modifyEditor.hit.fontFamily),
               fontSize: modifyEditor.hit.fontSize * scale,
               fontWeight: modifyEditor.hit.bold ? 'bold' : 'normal',
               fontStyle: modifyEditor.hit.italic ? 'italic' : 'normal',
-              color: 'black',
+              // WYSIWYG : couleur de texte + fond echantillonnes sur l'original
+              color: modifyEditor.colors?.text ?? '#000000',
+              backgroundColor: modifyEditor.colors?.background ?? '#FFFFFF',
               minWidth: modifyEditor.hit.width * pageSize.w + 40,
               padding: '0 2px',
               lineHeight: '1',
@@ -862,6 +934,49 @@ export default function PageCanvas({
 
 // ---- Sous-composants draggables ----
 
+/**
+ * Masque opaque integre au texte de l'outil "Modifier" (rendu en sibling, coords page).
+ * Memes conventions que l'ancien eraser : rotaté → pivot baseline-left + translateY(-100%) ;
+ * sinon top-left. z-index 9 : toujours sous le texte (10/14), au-dessus de l'image (8).
+ */
+function TextMaskRect({
+  rect,
+  rotation,
+  color,
+  pageW,
+  pageH
+}: {
+  rect: { x: number; y: number; w: number; h: number }
+  rotation?: number
+  color: string
+  pageW: number
+  pageH: number
+}): JSX.Element {
+  const rotated = rotation !== undefined && Math.abs(rotation) > 0.001
+  const rotatedStyle = rotated
+    ? {
+        transform: `rotate(${-rotation!}deg) translateY(-100%)`,
+        transformOrigin: '0 100%' as const
+      }
+    : {}
+  return (
+    <div
+      aria-hidden
+      className="absolute"
+      style={{
+        left: rect.x * pageW,
+        top: rect.y * pageH,
+        width: rect.w * pageW,
+        height: rect.h * pageH,
+        backgroundColor: color,
+        zIndex: 9,
+        pointerEvents: 'none',
+        ...rotatedStyle
+      }}
+    />
+  )
+}
+
 interface DragTextProps {
   a: TextAnnotation
   pageW: number
@@ -889,9 +1004,13 @@ function DraggableTextAnnotation({
 }: DragTextProps): JSX.Element {
   const [editing, setEditing] = useState(false)
   const [draftText, setDraftText] = useState(a.text)
-  const dragging = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(
-    null
-  )
+  const dragging = useRef<{
+    startX: number
+    startY: number
+    baseX: number
+    baseY: number
+    baseBg: { x: number; y: number; w: number; h: number } | null
+  } | null>(null)
   const [hovered, setHovered] = useState(false)
 
   function onMouseDown(e: React.MouseEvent) {
@@ -903,16 +1022,27 @@ function DraggableTextAnnotation({
       startX: e.clientX,
       startY: e.clientY,
       baseX: a.x,
-      baseY: a.y
+      baseY: a.y,
+      baseBg: a.backgroundRect ? { ...a.backgroundRect } : null
     }
     const onMove = (ev: MouseEvent) => {
       if (!dragging.current) return
       const dx = (ev.clientX - dragging.current.startX) / pageW
       const dy = (ev.clientY - dragging.current.startY) / pageH
-      onUpdate(a.id, {
+      const updates: Partial<TextAnnotation> = {
         x: Math.max(0, Math.min(1, dragging.current.baseX + dx)),
         y: Math.max(0, Math.min(1, dragging.current.baseY + dy))
-      } as Partial<Annotation>)
+      }
+      // Le fond integre suit le texte (coords absolues maj pour le save)
+      if (dragging.current.baseBg) {
+        updates.backgroundRect = {
+          x: dragging.current.baseBg.x + dx,
+          y: dragging.current.baseBg.y + dy,
+          w: dragging.current.baseBg.w,
+          h: dragging.current.baseBg.h
+        }
+      }
+      onUpdate(a.id, updates as Partial<Annotation>)
     }
     const onUp = () => {
       dragging.current = null
@@ -978,7 +1108,9 @@ function DraggableTextAnnotation({
       style={{
         left: a.x * pageW,
         top: a.y * pageH,
-        zIndex: isSelected ? 12 : 8,
+        // Le texte est TOUJOURS au-dessus des masques/erasers (z 4/6) pour ne
+        // jamais etre recouvert (bug historique : eraser z9 > texte z8).
+        zIndex: isSelected ? 14 : 10,
         cursor: 'move',
         padding: 2,
         border: isSelected
@@ -1009,7 +1141,9 @@ function DraggableTextAnnotation({
         style={{
           fontSize: a.size * scale,
           color: a.color,
-          fontFamily: 'Helvetica, Arial, sans-serif',
+          fontFamily: fontFamilyToCss(a.fontFamily ?? 'helvetica'),
+          fontWeight: a.bold ? 'bold' : 'normal',
+          fontStyle: a.italic ? 'italic' : 'normal',
           whiteSpace: 'pre',
           lineHeight: 1.25
         }}
@@ -1271,7 +1405,9 @@ function DraggableHighlightAnnotation({
         top: a.rect.y * pageH,
         width: a.rect.w * pageW,
         height: a.rect.h * pageH,
-        zIndex: isSelected ? 12 : 7,
+        // Surlignage AU-DESSUS du texte (10/14) pour rester visible meme par-dessus
+        // un texte modifie avec fond opaque (transparence du highlight conservee).
+        zIndex: isSelected ? 15 : 11,
         cursor: 'move',
         outline: isSelected ? '2px solid #0C806E' : 'none',
         outlineOffset: 0,
@@ -1420,7 +1556,8 @@ function DraggableEraserAnnotation({
         width: a.rect.w * pageW,
         height: a.rect.h * pageH,
         backgroundColor: a.color || '#FFFFFF',
-        zIndex: isSelected ? 12 : 9,
+        // Masque/eraser TOUJOURS sous le texte (10/14) pour ne jamais le recouvrir
+        zIndex: isSelected ? 6 : 4,
         cursor: 'move',
         // Bord invisible par defaut : la zone effacée se confond avec le fond
         // pour ressembler à une vraie suppression. Le bord apparaît au survol

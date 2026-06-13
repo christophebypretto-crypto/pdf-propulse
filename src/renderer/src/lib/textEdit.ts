@@ -28,22 +28,20 @@ function classifyFont(name: string): {
   bold: boolean
   italic: boolean
 } {
-  const lower = name.toLowerCase()
-  const bold =
-    lower.includes('bold') ||
-    lower.includes('heavy') ||
-    lower.includes('black') ||
-    lower.includes('semibold') ||
-    lower.includes('demi')
-  const italic = lower.includes('italic') || lower.includes('oblique')
+  // Retire le prefixe de subset PDF (ex "ABCDEF+Calibri") puis normalise.
+  const n = name.toLowerCase().replace(/^[a-z]{6}\+/i, '')
+  // Les graisses "light/thin/medium" ne doivent PAS etre marquees bold.
+  const isLight = /(light|thin|ultra|extralight|hairline|medium)/.test(n)
+  const bold = !isLight && /(bold|heavy|black|semibold|demibold|demi)/.test(n)
+  const italic = /(italic|oblique)/.test(n)
   let family: 'helvetica' | 'times' | 'courier' = 'helvetica'
-  if (
-    lower.includes('times') ||
-    lower.includes('serif') && !lower.includes('sansserif') && !lower.includes('sans-serif')
+  if (/(courier|consolas|menlo|monaco|mono)/.test(n)) {
+    family = 'courier'
+  } else if (
+    /(times|roman|georgia|garamond|minion|cambria|palatino|book antiqua|serif)/.test(n) &&
+    !/sans/.test(n)
   ) {
     family = 'times'
-  } else if (lower.includes('courier') || lower.includes('mono')) {
-    family = 'courier'
   }
   return { family, bold, italic }
 }

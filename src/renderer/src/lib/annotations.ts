@@ -44,6 +44,15 @@ export interface TextAnnotation extends BaseAnnotation {
   // Rotation en degres (convention PDF : counterclockwise positive)
   // Quand defini et non nul, (x, y) represente le baseline-left du texte (pas le top-left de bbox).
   rotation?: number
+  // --- Fond opaque integre (outil "Modifier") ---
+  // Quand defini, un rectangle plein de couleur `background` est peint DERRIERE le texte
+  // (dans le meme noeud DOM en apercu → plus de probleme de z-index ; dessine avant le
+  // texte au save → le texte passe par-dessus). Remplace l'ancien couple eraser+texte.
+  background?: string // hex opaque
+  // Geometrie du fond, MEME convention de coords/rotation que (x,y) :
+  // - rotation defini → backgroundRect.x/y = pivot baseline-left, le rect monte vers le haut
+  // - sinon → backgroundRect.x/y = top-left
+  backgroundRect?: { x: number; y: number; w: number; h: number }
 }
 
 export interface ImageAnnotation extends BaseAnnotation {
@@ -209,6 +218,36 @@ export async function applyAnnotationsToPdf(
     } else if (a.kind === 'text') {
       const c = hexToRgb(a.color)
       const textFont = await getFont(a.fontFamily, a.bold, a.italic)
+
+      // Fond opaque integre (outil "Modifier") : dessine AVANT le texte, donc le
+      // texte passe par-dessus. Meme convention de coords que (x,y).
+      if (a.background && a.backgroundRect) {
+        const bg = hexToRgb(a.background)
+        const br = a.backgroundRect
+        if (a.rotation !== undefined && Math.abs(a.rotation) > 0.001) {
+          // pivot = baseline-left (br.x, br.y), le rect monte vers le haut et tourne
+          page.drawRectangle({
+            x: br.x * pw,
+            y: toPdfY(br.y, ph),
+            width: br.w * pw,
+            height: br.h * ph,
+            color: rgb(bg.r, bg.g, bg.b),
+            opacity: 1,
+            rotate: degrees(a.rotation)
+          })
+        } else {
+          // br.x/br.y = top-left
+          page.drawRectangle({
+            x: br.x * pw,
+            y: toPdfY(br.y + br.h, ph),
+            width: br.w * pw,
+            height: br.h * ph,
+            color: rgb(bg.r, bg.g, bg.b),
+            opacity: 1
+          })
+        }
+      }
+
       if (a.rotation !== undefined) {
         // Mode baseline-left activé dès que rotation est defini (peut être 0)
         // Rotated: (x, y) = baseline-left ; multi-lignes peu probable mais on supporte
