@@ -19,7 +19,7 @@ publish:
   - provider: github
     owner: christophebypretto-crypto
     repo: pdf-100k
-    private: true
+    private: false
     releaseType: release
 mac:
   target:
