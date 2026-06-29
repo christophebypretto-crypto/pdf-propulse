@@ -18,7 +18,7 @@ fileAssociations:
 publish:
   - provider: github
     owner: christophebypretto-crypto
-    repo: pdf-100k
+    repo: pdf-propulse
     private: false
     releaseType: release
 mac:
