@@ -93,7 +93,7 @@ function setupAutoUpdater(win: BrowserWindow): void {
         defaultId: 0,
         cancelId: 1,
         title: 'Mise à jour disponible',
-        message: `PDF 100K ${info.version} est prête à être installée.`,
+        message: `Propulse PDF ${info.version} est prête à être installée.`,
         detail: "Redémarre l'app pour appliquer la mise à jour."
       })
       .then((res) => {
@@ -140,7 +140,7 @@ function buildAppMenu(): void {
     ...(isMac
       ? [
           {
-            label: 'PDF 100K',
+            label: 'Propulse PDF',
             submenu: [
               { role: 'about' as const },
               { type: 'separator' as const },

@@ -13,6 +13,7 @@ import ExtractDialog from './components/dialogs/ExtractDialog'
 import SignatureDialog from './components/dialogs/SignatureDialog'
 import RemoveTextDialog from './components/dialogs/RemoveTextDialog'
 import { renderPagesToThumbnails } from './lib/pdfRender'
+import { createBlankPdf } from './lib/blankPdf'
 import { Annotation, applyAnnotationsToPdf } from './lib/annotations'
 import { FormField, applyFormFieldsToPdf } from './lib/forms'
 import { ocrOnZone } from './lib/searchable'
@@ -21,6 +22,15 @@ import type { TextHit } from './lib/textEdit'
 export default function App(): JSX.Element {
   const [filePath, setFilePath] = useState<string | null>(null)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  // Fichiers récents (chemins absolus) persistes en localStorage
+  const [recentFiles, setRecentFiles] = useState<string[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('pdf100k:recent') || '[]')
+      return Array.isArray(v) ? v.filter((p) => typeof p === 'string') : []
+    } catch {
+      return []
+    }
+  })
   const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null)
   const [pages, setPages] = useState<PageEntry[]>([])
   const [currentPage, setCurrentPage] = useState(0)
@@ -55,25 +65,99 @@ export default function App(): JSX.Element {
   const [textColor, setTextColor] = useState('#1A1A1A')
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
 
-  const loadFromPath = useCallback(async (path: string) => {
+  // Ajoute un chemin en tête des récents (dédupe, max 10), persiste en localStorage
+  const addRecent = useCallback((path: string) => {
+    if (!path || path.startsWith('nouveau')) return
+    setRecentFiles((prev) => {
+      const next = [path, ...prev.filter((p) => p !== path)].slice(0, 10)
+      try {
+        localStorage.setItem('pdf100k:recent', JSON.stringify(next))
+      } catch {
+        /* quota plein : on ignore */
+      }
+      return next
+    })
+  }, [])
+
+  const removeRecent = useCallback((path: string) => {
+    setRecentFiles((prev) => {
+      const next = prev.filter((p) => p !== path)
+      try {
+        localStorage.setItem('pdf100k:recent', JSON.stringify(next))
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }, [])
+
+  const clearRecent = useCallback(() => {
+    setRecentFiles([])
+    try {
+      localStorage.removeItem('pdf100k:recent')
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const loadFromPath = useCallback(
+    async (path: string) => {
+      setBusy(true)
+      try {
+        const buf = await window.api.readPdf(path)
+        const thumbs = await renderPagesToThumbnails(buf)
+        setFilePath(path)
+        setPdfBytes(buf)
+        setPages(thumbs)
+        setCurrentPage(0)
+        setSelected(new Set([0]))
+        setAnnotations([])
+        setFormFields([])
+        setDirty(false)
+        // A chaque ouverture : direct sur la 1re page (et pas la grille "Pages")
+        setTool((t) => (t === 'pages' ? 'annotate-highlight' : t))
+        addRecent(path)
+      } finally {
+        setBusy(false)
+      }
+    },
+    [addRecent]
+  )
+
+  // Nouveau projet : PDF vierge A4, document non enregistré (pas de chemin)
+  const newDocument = useCallback(async () => {
     setBusy(true)
     try {
-      const buf = await window.api.readPdf(path)
+      const buf = await createBlankPdf()
       const thumbs = await renderPagesToThumbnails(buf)
-      setFilePath(path)
       setPdfBytes(buf)
       setPages(thumbs)
       setCurrentPage(0)
       setSelected(new Set([0]))
       setAnnotations([])
       setFormFields([])
-      setDirty(false)
-      // A chaque ouverture : direct sur la 1re page (et pas la grille "Pages")
+      setFilePath(null)
+      setDirty(true)
       setTool((t) => (t === 'pages' ? 'annotate-highlight' : t))
     } finally {
       setBusy(false)
     }
   }, [])
+
+  // Ouvre un fichier récent ; s'il a disparu, le retire de la liste
+  const openRecent = useCallback(
+    async (path: string) => {
+      try {
+        await loadFromPath(path)
+      } catch {
+        window.alert(
+          'Ce fichier est introuvable (déplacé, renommé ou supprimé).\nIl a été retiré des récents.'
+        )
+        removeRecent(path)
+      }
+    },
+    [loadFromPath, removeRecent]
+  )
 
   const loadFromBytes = useCallback(
     async (buf: ArrayBuffer, newName?: string) => {
@@ -261,7 +345,8 @@ export default function App(): JSX.Element {
     setFormFields([])
     setPdfBytes(final)
     setLastSavedAt(Date.now())
-  }, [pdfBytes, filePath, buildFinalPdf])
+    addRecent(path)
+  }, [pdfBytes, filePath, buildFinalPdf, addRecent])
 
   const saveAs = useCallback(async () => {
     if (!pdfBytes) return
@@ -276,7 +361,8 @@ export default function App(): JSX.Element {
     setFormFields([])
     setPdfBytes(final)
     setLastSavedAt(Date.now())
-  }, [pdfBytes, filePath, buildFinalPdf])
+    addRecent(path)
+  }, [pdfBytes, filePath, buildFinalPdf, addRecent])
 
   // Confirmation "Enregistré dans X" : s'efface auto apres 8s
   useEffect(() => {
@@ -758,7 +844,10 @@ export default function App(): JSX.Element {
       const inInput =
         document.activeElement?.tagName === 'INPUT' ||
         document.activeElement?.tagName === 'TEXTAREA'
-      if (meta && e.key === 'o') {
+      if (meta && e.key === 'n' && !inInput) {
+        e.preventDefault()
+        newDocument()
+      } else if (meta && e.key === 'o') {
         e.preventDefault()
         openFile()
       } else if (meta && e.key === 's') {
@@ -802,6 +891,7 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [
     openFile,
+    newDocument,
     save,
     saveAs,
     onZoom,
@@ -841,6 +931,10 @@ export default function App(): JSX.Element {
         textColor={textColor}
         signatureDataUrl={signatureDataUrl}
         onOpen={openFile}
+        onNew={newDocument}
+        recentFiles={recentFiles}
+        onOpenRecent={openRecent}
+        onClearRecent={clearRecent}
         onSave={save}
         onSaveAs={saveAs}
         onMerge={() => setDialog('merge')}
@@ -959,7 +1053,13 @@ export default function App(): JSX.Element {
           )
         ) : (
           <main className="flex-1 min-w-0 overflow-hidden">
-            <EmptyState onOpen={openFile} onMerge={() => setDialog('merge')} />
+            <EmptyState
+              onOpen={openFile}
+              onNew={newDocument}
+              onMerge={() => setDialog('merge')}
+              recentFiles={recentFiles}
+              onOpenRecent={openRecent}
+            />
           </main>
         )}
       </div>

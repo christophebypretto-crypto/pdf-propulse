@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Tool } from './Sidebar'
 
 interface Props {
@@ -18,6 +19,10 @@ interface Props {
   textColor: string
   signatureDataUrl: string | null
   onOpen: () => void
+  onNew: () => void
+  recentFiles: string[]
+  onOpenRecent: (path: string) => void
+  onClearRecent: () => void
   onSave: () => void
   onSaveAs: () => void
   onMerge: () => void
@@ -70,13 +75,77 @@ export default function Toolbar(p: Props): JSX.Element {
   const ghostDisabled = `${cls} text-black/30 cursor-not-allowed`
   const can = (need: boolean) => (need ? ghost : ghostDisabled)
 
+  const [recentOpen, setRecentOpen] = useState(false)
+  const recentRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!recentOpen) return
+    const onDown = (e: MouseEvent): void => {
+      if (recentRef.current && !recentRef.current.contains(e.target as Node)) setRecentOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [recentOpen])
+
   return (
     <header className="shrink-0 bg-white border-b border-black/10">
       {/* Ligne 1 : fichier + ops PDF + zoom */}
       <div className="h-12 flex items-center px-3 gap-2">
-        <button onClick={p.onOpen} className={primary} disabled={p.busy}>
+        <button
+          onClick={p.onNew}
+          className={primary}
+          disabled={p.busy}
+          title="Démarrer un nouveau document PDF vierge (⌘N)"
+        >
+          ＋ Nouveau
+        </button>
+        <button onClick={p.onOpen} className={ghost} disabled={p.busy} title="Ouvrir un PDF (⌘O)">
           Ouvrir
         </button>
+
+        {/* Récents : menu déroulant */}
+        <div className="relative" ref={recentRef}>
+          <button
+            onClick={() => setRecentOpen((v) => !v)}
+            disabled={p.busy || p.recentFiles.length === 0}
+            className={p.recentFiles.length === 0 ? ghostDisabled : ghost}
+            title="Rouvrir un fichier récent"
+          >
+            Récents ▾
+          </button>
+          {recentOpen && p.recentFiles.length > 0 && (
+            <div className="absolute left-0 top-full mt-1 z-50 w-80 bg-white border border-black/15 rounded-lg shadow-xl py-1 max-h-96 overflow-auto">
+              {p.recentFiles.map((path) => {
+                const name = path.split(/[/\\]/).pop() || path
+                const dir = path.slice(0, path.length - name.length).replace(/[/\\]$/, '')
+                return (
+                  <button
+                    key={path}
+                    onClick={() => {
+                      setRecentOpen(false)
+                      p.onOpenRecent(path)
+                    }}
+                    title={path}
+                    className="w-full text-left px-3 py-1.5 hover:bg-pretto/5 flex flex-col"
+                  >
+                    <span className="text-sm text-ink truncate">{name}</span>
+                    <span className="text-[11px] text-black/40 truncate">{dir}</span>
+                  </button>
+                )
+              })}
+              <div className="border-t border-black/10 mt-1 pt-1">
+                <button
+                  onClick={() => {
+                    setRecentOpen(false)
+                    p.onClearRecent()
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-500/5"
+                >
+                  Vider la liste des récents
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <button
           onClick={p.onSave}
           className={can(p.hasDoc)}
